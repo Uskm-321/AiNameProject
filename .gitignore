@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.idea/
+*.log
+uploads/
+ainame/unpackage/
+AiNameProject/chroma_rag_db/

@@ -4,4 +4,4 @@ __pycache__/
 *.log
 uploads/
 ainame/unpackage/
-AiNameProject/chroma_rag_db/
+backend/chroma_rag_db/

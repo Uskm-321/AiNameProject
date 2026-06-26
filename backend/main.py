@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi_mail import FastMail, MessageSchema, MessageType
 from starlette.responses import HTMLResponse
 from aiosmtplib import SMTPResponseException
@@ -10,6 +13,7 @@ from routers.auth_router import router as auth_router
 from routers.admin_router import router as admin_router
 from routers.name_router import router as name_router
 from routers.rag_router import router as rag_router
+from routers.visual_router import router as visual_router
 
 # 2. 导入工作流初始化函数 (对应最新的 workflow.py)
 from core.workflow import get_naming_graph
@@ -30,6 +34,9 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(name_router)
 app.include_router(rag_router)
+app.include_router(visual_router)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # 5. 启动事件：在这里安全地初始化数据库连接池和工作流

@@ -1,11 +1,13 @@
 from typing import TypedDict, List, Dict, Any, Literal
+import json
+import re
 import uuid
 from langgraph.graph import StateGraph, END
 from langchain_deepseek import ChatDeepSeek
 from pydantic import SecretStr
 from schemas.name import NameIn, FeedbackIn
 from schemas.agent import NameResultSchema
-from core.tools import check_com_domain
+from core.tools import check_name_domains
 import asyncio
 import os
 
@@ -17,6 +19,8 @@ class WorkflowState(TypedDict):
     surname: str
     gender: str
     length: str
+    style: str
+    brand_tone: str
     other: str
     exclude: List[str]
     feedback: str
@@ -35,6 +39,120 @@ structured_llm = llm.with_structured_output(NameResultSchema).with_retry(
 )
 
 
+def _fallback_names(category: str, reason: str = "大模型服务暂时不稳定") -> Dict[str, Any]:
+    return {
+        "names": [{
+            "name": "请重试",
+            "reference": "系统提示",
+            "moral": reason,
+            "style_reason": "本次未能稳定生成候选名，请稍后再试或简化补充要求。",
+            "score": 0,
+            "domain": "",
+            "domain_status": ""
+        }]
+    }
+
+
+def _extract_json_object(text: str) -> dict | None:
+    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, flags=re.S)
+    raw = fenced.group(1) if fenced else text
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        return json.loads(raw[start:end + 1])
+    except json.JSONDecodeError:
+        return None
+
+
+def _normalize_name_item(item: Any, *, category: str, index: int) -> dict:
+    if not isinstance(item, dict):
+        item = {"name": str(item)}
+
+    name = str(item.get("name") or "").strip()
+    if not name:
+        name = f"候选名{index + 1}"
+
+    score = item.get("score", 80)
+    try:
+        score = int(score)
+    except (TypeError, ValueError):
+        score = 80
+    score = max(0, min(score, 100))
+
+    return {
+        "name": name,
+        "reference": str(item.get("reference") or item.get("source") or "由 AI 根据用户要求生成").strip(),
+        "moral": str(item.get("moral") or item.get("meaning") or "寓意积极，便于记忆与传播。").strip(),
+        "style_reason": str(item.get("style_reason") or item.get("reason") or "符合当前选择的风格要求。").strip(),
+        "score": score,
+        "domain": str(item.get("domain") or "").strip() if category == "企业名" else "",
+        "domain_status": str(item.get("domain_status") or "").strip(),
+    }
+
+
+async def _generate_names_with_fallback(prompt: str, *, category: str, require_domain: bool = False) -> Dict[str, Any]:
+    json_instruction = """
+请只返回严格 JSON，不要输出 Markdown 或解释文字。格式如下：
+{
+  "names": [
+    {
+      "name": "名字",
+      "reference": "出处/灵感",
+      "moral": "寓意",
+      "style_reason": "风格匹配理由",
+      "score": 88,
+      "domain": "example.com"
+    }
+  ]
+}
+"""
+    try:
+        response = await structured_llm.ainvoke(prompt + json_instruction)
+        if response and getattr(response, "names", None):
+            return response.model_dump()
+    except Exception as e:
+        print(f"{category}结构化生成失败，尝试普通 JSON 重试: {e}")
+
+    try:
+        response = await llm.ainvoke(prompt + json_instruction)
+        content = getattr(response, "content", response)
+        parsed = _extract_json_object(str(content))
+        if parsed and isinstance(parsed.get("names"), list) and parsed["names"]:
+            names = [
+                _normalize_name_item(item, category=category, index=index)
+                for index, item in enumerate(parsed["names"][:5])
+            ]
+            if require_domain:
+                for index, item in enumerate(names):
+                    if not item["domain"]:
+                        item["domain"] = f"brand{index + 1}.com"
+            return {"names": names}
+    except Exception as e:
+        print(f"{category}普通 JSON 重试失败: {e}")
+
+    return _fallback_names(category)
+
+
+async def _attach_domain_checks(names_data: Dict[str, Any]) -> Dict[str, Any]:
+    names = names_data.get("names", [])
+    if not names:
+        return names_data
+
+    async def enrich(item: dict):
+        suggested_domain = item.get("domain", "")
+        domains = await check_name_domains(item.get("name", ""), suggested_domain=suggested_domain, limit=3)
+        item["domains"] = domains
+        if domains:
+            item["domain"] = domains[0]["domain"]
+            item["domain_status"] = domains[0]["message"]
+        return item
+
+    names_data["names"] = await asyncio.gather(*(enrich(item) for item in names))
+    return names_data
+
+
 # 3. 定义节点函数 (保持不变)
 async def supervisor_node(state: WorkflowState) -> Dict[str, Any]:
     return {}
@@ -43,25 +161,18 @@ async def supervisor_node(state: WorkflowState) -> Dict[str, Any]:
 async def human_naming_node(state: WorkflowState) -> Dict[str, Any]:
     prompt = f"""你是一位精通汉语言文学与传统文化的命名专家。请为用户创作富有文化底蕴的人名。
        【姓氏】: {state['surname']}
-       【性别倾向】: {state['gender']}
        【字数限制】: {state['length']}
-       【其它具体要求】: {state['other']}
+       【名字风格】: {state['style']}
+       【补充要求】: {state['other']}
        【避讳排除字】: {'、'.join(state['exclude'])}
-       原则：平仄协调，优先从《诗经》《楚辞》或唐诗宋词中汲取灵感。请给出 5 个候选方案。"""
-    response = await structured_llm.ainvoke(prompt)
-    if response is None:
-        return {
-            "final_output": {
-                "names": [{
-                    "name": "生成失败",
-                    "reference": "模型返回为空",
-                    "moral": "AI 未返回可解析的人名结果，请稍后重试或补充起名要求。",
-                    "domain": "",
-                    "domain_status": ""
-                }]
-            }
-        }
-    return {"final_output": response.model_dump()}
+       原则：
+       1. 平仄协调，读起来顺口、好记、有辨识度。
+       2. 优先从《诗经》《楚辞》或唐诗宋词中汲取灵感，但不要生僻难认。
+       3. 每个名字必须贴合用户选择的风格。
+       请给出 5 个候选方案。每个方案必须包含：
+       name（完整姓名）、reference（出处/灵感）、moral（寓意）、style_reason（风格匹配理由）、score（0-100 推荐指数）。"""
+    result = await _generate_names_with_fallback(prompt, category="人名")
+    return {"final_output": await _attach_domain_checks(result)}
 
 
 from core.rag_service import retrieve_user_knowledge
@@ -72,7 +183,7 @@ async def company_naming_node(state: WorkflowState) -> Dict[str, Any]:
     rag_context = ""
 
     other = state.get("other", "")
-    length = state.get("length", "不限")
+    brand_tone = state.get("brand_tone", "")
     exclude = state.get("exclude", [])
     feedback = state.get("feedback", "")
     history_names = state.get("history_names", "")
@@ -104,39 +215,21 @@ async def company_naming_node(state: WorkflowState) -> Dict[str, Any]:
     exclude_str = '、'.join(exclude) if exclude else "无"
 
     prompt = f"""你是一位精通商业品牌传播的资深顾问。请创作符合商业规范的公司名。
-        【行业或核心诉求】: {other}
-        【字数限制】: {length}
+        【品牌调性】: {brand_tone}
+        【行业或补充要求】: {other}
         【避讳排除字】: {exclude_str}
-        原则：易于传播、符合行业调性，具备良好的商业愿景。
+        原则：易于传播、符合品牌调性，具备良好的商业愿景和记忆点。
         【专属私有知识库】{rag_context}
         {feedback_instruction}
         🔴 核心纪律（最高优先级）：
         1. 必须遵守知识库和修改意见。
         2. 你必须为每个公司名构思一个绝佳的 .com 英文或拼音域名，填入 domain 字段（例如：hema.com 或 greenearth.com）。
-        请给出 5 个候选方案，每个方案包含：name（公司名）、reference（出处/含义）、moral（寓意）、domain（建议域名）。"""
+        请给出 5 个候选方案，每个方案包含：
+        name（公司名）、reference（出处/含义）、moral（寓意）、style_reason（品牌调性匹配理由）、score（0-100 推荐指数）、domain（建议域名）。"""
 
-    response = await structured_llm.ainvoke(prompt)
-
-    if not response or not hasattr(response, 'names'):
-        return {
-            "final_output": {
-                "names": [{
-                    "name": "生成失败",
-                    "reference": "无",
-                    "moral": "大模型服务异常，请重试",
-                    "domain": "",
-                    "domain_status": ""
-                }]
-            },
-            "history_names": ""
-        }
-
-    tasks = [check_com_domain(n.domain) for n in response.names if hasattr(n, 'domain')]
-    if tasks:
-        statuses = await asyncio.gather(*tasks)
-        for n, status in zip([n for n in response.names if hasattr(n, 'domain')], statuses):
-            n.domain_status = status
-
+    response_data = await _generate_names_with_fallback(prompt, category="企业名", require_domain=True)
+    response_data = await _attach_domain_checks(response_data)
+    response = NameResultSchema(**response_data)
     names_str = ", ".join([n.name for n in response.names])
     return {"final_output": response.model_dump(), "history_names": names_str}
 
@@ -145,51 +238,25 @@ async def pet_naming_node(state: WorkflowState) -> Dict[str, Any]:
     try:
         # 1. 构建 Prompt：明确要求 JSON 格式
         prompt = f"""你是一位充满创意的宠物达人。请为用户的宠物起一些富有灵性的名字。
-        【宠物特征/性格】: {state['other']}
         【字数限制】: {state['length']}
+        【名字风格】: {state['style']}
+        【补充要求】: {state['other']}
         【避讳排除字】: {'、'.join(state['exclude']) if state['exclude'] else '无'}
-        原则：亲切好记、富有画面感或软萌感。
+        原则：亲切好记、富有画面感，必须贴合用户选择的风格。
 
         ⚠️ 输出要求（严格执行）：
         1. 必须返回 JSON 格式。
         2. JSON 中必须包含 "names" 字段，该字段是一个包含 5 个对象的数组。
-        3. 每个对象必须包含 "name"（名字）、"reference"（出处/含义）、"moral"（寓意）这三个字段。
+        3. 每个对象必须包含 "name"（名字）、"reference"（出处/含义）、"moral"（寓意）、"style_reason"（风格匹配理由）、"score"（0-100 推荐指数）。
         4. 如果无法生成，请返回空数组。"""
 
-        response = await structured_llm.ainvoke(prompt)
-
-        # 2. 防御性检查：确保 response 不为 None
-        if response is None:
-            print(" 模型返回了 None，使用默认错误响应")
-            return {
-                "final_output": {
-                    "names": [{
-                        "name": "解析错误",
-                        "reference": "格式错误",
-                        "moral": "AI 返回了无效格式，请检查输入内容。",
-                        "domain": "",
-                        "domain_status": ""
-                    }]
-                }
-            }
-
-        # 3. 正常返回
-        return {"final_output": response.model_dump()}
+        result = await _generate_names_with_fallback(prompt, category="宠物名")
+        return {"final_output": await _attach_domain_checks(result)}
 
     except Exception as e:
         # 4. 捕获所有异常，防止崩溃
         print(f" 宠物名生成节点异常: {e}")
-        return {
-            "final_output": {
-                "names": [{
-                    "name": "生成失败",
-                    "reference": "系统异常",
-                    "moral": f"发生未预期的错误: {str(e)}",
-                    "domain": "",
-                    "domain_status": ""
-                }]
-            }
-        }
+        return {"final_output": _fallback_names("宠物名", f"发生未预期的错误: {str(e)}")}
 
 
 def route_by_category(state: WorkflowState) -> Literal["human", "company", "pet"]:
@@ -258,6 +325,8 @@ async def get_names_v2(name_info: NameIn, user_id: int) -> Dict[str, Any]:
         "surname": name_info.surname or "",
         "gender": name_info.gender or "不限",
         "length": name_info.length or "不限",
+        "style": name_info.style or "",
+        "brand_tone": name_info.brand_tone or "",
         "other": name_info.other or "",
         "exclude": name_info.exclude or [],
         "feedback": "",

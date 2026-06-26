@@ -12,14 +12,20 @@ class NameIn(BaseModel):
     surname: Annotated[str, Field("", description="姓氏")]
     gender: Annotated[Literal["不限", "男", "女"], Field("不限", description="性别")]
     length: Annotated[Literal["不限", "单字", "两字"], Field("不限", description="字数")]
+    style: Annotated[str, Field("", description="人名/宠物名风格")]
+    brand_tone: Annotated[str, Field("", description="企业品牌调性")]
     other: Annotated[str | None, Field("", description="其他要求")]
-    exclude: Annotated[List[str], Field([], description="排除的名字")]
+    exclude: Annotated[List[str], Field(default_factory=list, description="排除的名字")]
 
-    # 如果给人起名字，需要给一个姓
+    # 如果给人起名字，需要给一个姓氏
     @model_validator(mode="after")
     def validate_firstname(self):
         if self.category == "人名" and not self.surname:
             raise ValueError("生成姓名时，姓氏不能为空！")
+        if self.category in ("人名", "宠物名") and not self.style:
+            raise ValueError("请选择名字风格")
+        if self.category == "企业名" and not self.brand_tone:
+            raise ValueError("请选择品牌调性")
         return self
 
 

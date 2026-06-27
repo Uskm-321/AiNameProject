@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>用户登录</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      background: #f8f8f8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      color: #222;
+    }
+
+    .container {
+      width: min(430px, 100%);
+      padding: 40px 20px;
+      background: #fff;
+      min-height: 100vh;
+    }
+
+    .title {
+      font-size: 24px;
+      font-weight: 700;
+      margin: 12px 0 56px;
+      text-align: center;
+    }
+
+    .input-box {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid #eee;
+      padding: 14px 0;
+      margin-bottom: 18px;
+      font-size: 16px;
+      outline: none;
+      background: transparent;
+    }
+
+    .btn {
+      width: 100%;
+      border: 0;
+      border-radius: 4px;
+      background-color: #007aff;
+      color: white;
+      margin-top: 28px;
+      padding: 12px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .btn:disabled {
+      opacity: 0.65;
+      cursor: default;
+    }
+
+    .link {
+      text-align: center;
+      color: #007aff;
+      margin-top: 18px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .toast {
+      margin-top: 18px;
+      min-height: 22px;
+      text-align: center;
+      color: #dd524d;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <div class="title">AI 智能起名</div>
+    <input id="email" class="input-box" placeholder="请输入邮箱" autocomplete="email">
+    <input id="password" class="input-box" type="password" placeholder="请输入密码" autocomplete="current-password">
+    <button id="loginBtn" class="btn">登录</button>
+    <div class="link" id="registerLink">没有账号？去注册</div>
+    <div id="toast" class="toast"></div>
+  </main>
+
+  <script>
+    const API_BASE = window.location.origin;
+    const email = document.querySelector("#email");
+    const password = document.querySelector("#password");
+    const loginBtn = document.querySelector("#loginBtn");
+    const toast = document.querySelector("#toast");
+
+    function showToast(message) {
+      toast.textContent = message;
+    }
+
+    loginBtn.addEventListener("click", async () => {
+      if (!email.value || !password.value) {
+        showToast("请填写完整");
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = "登录中...";
+      showToast("");
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/login`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: email.value,
+            password: password.value
+          })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showToast(typeof data.detail === "string" ? data.detail : "登录失败");
+          return;
+        }
+
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        showToast("登录成功");
+        const role = data.user && data.user.role;
+        const adminRoles = ["admin", "super_admin", "ADMIN", "SUPER_ADMIN"];
+        const targetUrl = adminRoles.includes(role) ? "/page/admin" : "/page/index";
+        window.location.replace(targetUrl);
+      } catch (error) {
+        showToast("网络连接断开，请检查网络");
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "登录";
+      }
+    });
+
+    document.querySelector("#registerLink").addEventListener("click", () => {
+      window.location.href = "/static/register-preview.html";
+    });
+  </script>
+</body>
+</html>

@@ -14,6 +14,7 @@ import http from '@/http/http.js';
 
 const form = ref({ email: '', password: '' });
 const loading = ref(false);
+const adminRoles = ['admin', 'super_admin', 'ADMIN', 'SUPER_ADMIN'];
 
 const handleLogin = async () => {
   if (!form.value.email || !form.value.password) {
@@ -27,7 +28,7 @@ const handleLogin = async () => {
     uni.setStorageSync('user', res.user);
     uni.showToast({ title: '登录成功' });
 
-    const targetUrl = res.user && res.user.role === 'ADMIN' ? '/pages/admin/admin' : '/pages/index/index';
+    const targetUrl = res.user && adminRoles.includes(res.user.role) ? '/pages/admin/admin' : '/pages/index/index';
     setTimeout(() => uni.reLaunch({ url: targetUrl }), 600);
   } catch (e) {
     console.error(e);

@@ -114,6 +114,7 @@ class AuthHandler(metaclass=SingletonMeta):
         user = await repository.get_by_id(user_id)
         if not user:
             raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="用户不存在")
+        user = await repository.clear_expired_ban(user)
         if user.status == UserStatus.BANNED.value and (not user.banned_until or user.banned_until > datetime.now()):
             raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail="用户已封禁")
         if user.blacklisted:
@@ -130,10 +131,11 @@ class AuthHandler(metaclass=SingletonMeta):
         user = await repository.get_by_id(user_id)
         if not user:
             raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="用户不存在")
+        user = await repository.clear_expired_ban(user)
         if user.status == UserStatus.BANNED.value and (not user.banned_until or user.banned_until > datetime.now()):
             raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail="用户已封禁")
         if user.blacklisted:
             raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail="用户已进入黑名单")
-        if user.role != UserRole.ADMIN.value:
+        if user.role not in {UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value, "ADMIN", "SUPER_ADMIN"}:
             raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail="需要管理员权限")
         return user

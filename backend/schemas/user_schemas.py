@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 RawPasswordStr = Annotated[str, Field(..., min_length=6, max_length=8)]
 UserNameStr = Annotated[str, Field(min_length=4, max_length=8)]
-UserRoleLiteral = Literal["USER", "ADMIN"]
+UserRoleLiteral = Literal["user", "admin", "super_admin", "USER", "ADMIN", "SUPER_ADMIN"]
 UserSegmentLiteral = Literal["B", "C"]
 UserStatusLiteral = Literal["ACTIVE", "BANNED"]
 
@@ -17,6 +17,7 @@ class RegisterIn(BaseModel):
     username: UserNameStr
     confirm_password: RawPasswordStr
     code: Annotated[str, Field(..., min_length=4, max_length=4)]
+    invite_code: str | None = Field(default=None, max_length=32)
 
     @model_validator(mode="after")
     def password_is_match(self):
@@ -42,10 +43,12 @@ class UserSchema(BaseModel):
     id: int
     username: str
     email: EmailStr
-    role: UserRoleLiteral = "USER"
+    role: UserRoleLiteral = "user"
     user_segment: UserSegmentLiteral = "C"
     status: UserStatusLiteral = "ACTIVE"
     blacklisted: bool = False
+    invite_code: str = ""
+    credits: int = 0
 
 
 class LoginOut(BaseModel):
@@ -62,13 +65,47 @@ class AdminUserOut(UserSchema):
     updated_at: datetime | None = None
 
 
+class AdminManagedUserOut(AdminUserOut):
+    today_usage: int = 0
+
+
 class AdminUserListOut(BaseModel):
     total: int
-    items: list[AdminUserOut]
+    items: list[AdminManagedUserOut]
+
+
+class AdminUserAPIKeyOut(BaseModel):
+    id: int
+    name: str
+    key_masked: str
+    status: str
+    total_quota: int
+    used_today: int
+    total_used: int
+    last_used_at: datetime | None = None
+    created_at: datetime
+
+
+class AdminUserDetailOut(BaseModel):
+    user: AdminManagedUserOut
+    api_keys: list[AdminUserAPIKeyOut]
+
+
+class AdminUsersOverviewOut(BaseModel):
+    total_users: int
+    active_users_today: int
+    total_usage: int
+
+
+class AdminUserCreateIn(BaseModel):
+    email: EmailStr
+    password: RawPasswordStr
+    username: Annotated[str, Field(..., min_length=3, max_length=8)]
+    role: Literal["USER", "ADMIN"] = "USER"
 
 
 class UserRoleUpdateIn(BaseModel):
-    role: UserRoleLiteral
+    role: Literal["USER", "ADMIN"]
 
 
 class UserSegmentUpdateIn(BaseModel):

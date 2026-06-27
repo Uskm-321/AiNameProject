@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>API 仪表盘</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f5f7fa; color: #172033; }
+    .page { max-width: 1180px; margin: 0 auto; padding: 24px; }
+    .bar, .panel, .stat { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
+    .bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px; margin-bottom: 18px; }
+    .title { font-size: 22px; font-weight: 700; }
+    .subtitle, .muted { color: #667085; font-size: 14px; margin-top: 5px; }
+    .actions, .row-actions, .pager, .tabs { display: flex; align-items: center; gap: 8px; }
+    button { border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; color: #344054; padding: 9px 14px; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    .primary { color: #fff; background: #2563eb; border-color: #2563eb; }
+    .danger { color: #b42318; border-color: #fecdca; }
+    .success { color: #067647; border-color: #abefc6; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .stat { padding: 18px; }
+    .stat-label { color: #667085; font-size: 14px; }
+    .stat-value { margin-top: 8px; font-size: 28px; font-weight: 700; }
+    .charts { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; }
+    .panel { padding: 18px; margin-bottom: 18px; overflow: hidden; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .panel-title { font-size: 17px; font-weight: 700; }
+    canvas { width: 100%; height: 240px; display: block; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 13px 10px; border-bottom: 1px solid #eaecf0; text-align: left; white-space: nowrap; }
+    th { color: #667085; background: #f9fafb; font-weight: 600; }
+    .badge { display: inline-block; border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 600; }
+    .active, .success-badge { color: #067647; background: #ecfdf3; }
+    .disabled { color: #475467; background: #f2f4f7; }
+    .failed { color: #b42318; background: #fef3f2; }
+    .key, code { font-family: Consolas, Monaco, monospace; }
+    .pager { justify-content: flex-end; margin-top: 14px; font-size: 14px; color: #667085; }
+    .tabs button.selected { color: #fff; background: #344054; border-color: #344054; }
+    .endpoint-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .endpoint-tabs button.selected { color: #175cd3; background: #eff4ff; border-color: #84adff; }
+    pre { position: relative; margin: 0; padding: 18px; overflow-x: auto; border-radius: 6px; background: #171a21; color: #d0d5dd; line-height: 1.6; font-size: 13px; }
+    .empty { padding: 28px; text-align: center; color: #98a2b3; }
+    .status { min-height: 20px; margin-bottom: 12px; color: #b42318; font-size: 14px; }
+    @media (max-width: 760px) {
+      .page { padding: 14px; }
+      .bar { align-items: flex-start; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .charts { grid-template-columns: 1fr; }
+      .actions { flex-wrap: wrap; justify-content: flex-end; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="bar">
+      <div>
+        <div class="title">API 仪表盘</div>
+        <div class="subtitle" id="account">开发者控制台</div>
+      </div>
+      <div class="actions">
+        <button id="backBtn">返回起名页</button>
+        <button class="primary" id="createBtn">创建新 Key</button>
+      </div>
+    </section>
+
+    <div class="status" id="status"></div>
+
+    <section class="stats">
+      <div class="stat"><div class="stat-label">总 Key 数</div><div class="stat-value" id="totalKeys">0</div></div>
+      <div class="stat"><div class="stat-label">今日调用次数</div><div class="stat-value" id="usedToday">0</div></div>
+      <div class="stat"><div class="stat-label">剩余总次数</div><div class="stat-value" id="remainingToday">0</div></div>
+      <div class="stat"><div class="stat-label">总调用次数</div><div class="stat-value" id="totalUsed">0</div></div>
+    </section>
+
+    <section class="charts">
+      <div class="panel">
+        <div class="panel-title">近 7 天调用趋势</div>
+        <div class="subtitle">所有 API Key 的每日调用次数</div>
+        <canvas id="trendChart"></canvas>
+      </div>
+      <div class="panel">
+        <div class="panel-title">各接口调用分布</div>
+        <div class="subtitle">按接口类型汇总历史调用</div>
+        <canvas id="distributionChart"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div><div class="panel-title">API Key</div><div class="subtitle">管理用于外部调用的访问密钥</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>名称</th><th>Key</th><th>状态</th><th>今日已用/额度</th><th>创建时间</th><th>操作</th></tr></thead>
+          <tbody id="keyRows"></tbody>
+        </table>
+        <div class="empty" id="keyEmpty">暂无 API Key</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div><div class="panel-title">最近调用记录</div><div class="subtitle" id="usageCount">共 0 条记录</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>时间</th><th>接口路径</th><th>消耗次数</th><th>状态</th></tr></thead>
+          <tbody id="usageRows"></tbody>
+        </table>
+        <div class="empty" id="usageEmpty">暂无调用记录</div>
+      </div>
+      <div class="pager">
+        <button id="prevBtn">上一页</button><span id="pageInfo">第 1 / 1 页</span><button id="nextBtn">下一页</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div><div class="panel-title">接口示例代码</div><div class="subtitle" id="endpointPath">POST /name/npc</div></div>
+        <div class="tabs"><button class="selected" data-lang="curl">curl</button><button data-lang="python">Python</button></div>
+      </div>
+      <div class="endpoint-tabs" id="endpointTabs">
+        <button class="selected" data-endpoint="npc">NPC</button>
+        <button data-endpoint="novel">小说角色</button>
+        <button data-endpoint="place">地名</button>
+      </div>
+      <pre><code id="codeBlock"></code></pre>
+    </section>
+  </main>
+
+  <script>
+    const API_BASE = window.location.origin;
+    const token = localStorage.getItem("token");
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    let usagePage = 1;
+    let usageTotal = 0;
+    const pageSize = 10;
+    let codeLanguage = "curl";
+    let endpointType = "npc";
+    let currentExampleKey = localStorage.getItem("dashboard_api_key") || "YOUR_API_KEY";
+    const endpointOptions = {
+      npc: { path: "/name/npc", category: "NPC", other: "奇幻城镇中的任务发布者" },
+      novel: { path: "/name/novel-character", category: "小说角色", other: "现代悬疑小说主角" },
+      place: { path: "/name/place", category: "地名", other: "临海的东方幻想城市" }
+    };
+
+    const byId = (id) => document.getElementById(id);
+    byId("account").textContent = `${user.email || "当前用户"} · ${user.role || "user"}`;
+
+    async function requestJson(url, options = {}) {
+      const response = await fetch(`${API_BASE}${url}`, {
+        ...options,
+        headers: {
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...(options.body ? { "content-type": "application/json" } : {}),
+          ...(options.headers || {})
+        }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "请求失败");
+      return data;
+    }
+
+    function formatTime(value) {
+      return value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "-";
+    }
+
+    function renderKeys(keys) {
+      byId("keyEmpty").style.display = keys.length ? "none" : "block";
+      byId("keyRows").innerHTML = keys.map((item) => `
+        <tr>
+          <td><strong>${escapeHtml(item.name)}</strong></td>
+          <td class="key">${escapeHtml(item.key_masked || "")}</td>
+          <td><span class="badge ${item.status}">${item.status === "active" ? "激活" : "禁用"}</span></td>
+          <td>${item.used_today} / ${item.total_quota}</td>
+          <td>${formatTime(item.created_at)}</td>
+          <td>
+            <div class="row-actions">
+              <button class="${item.status === "active" ? "" : "success"}" onclick="changeStatus(${item.id}, '${item.status === "active" ? "disable" : "enable"}')">${item.status === "active" ? "禁用" : "启用"}</button>
+              <button class="danger" onclick="deleteKey(${item.id}, '${escapeHtml(item.name)}')">删除</button>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function renderUsage(result) {
+      usageTotal = result.total || 0;
+      const pages = Math.max(1, Math.ceil(usageTotal / pageSize));
+      byId("usageCount").textContent = `共 ${usageTotal} 条记录`;
+      byId("pageInfo").textContent = `第 ${usagePage} / ${pages} 页`;
+      byId("prevBtn").disabled = usagePage <= 1;
+      byId("nextBtn").disabled = usagePage >= pages;
+      byId("usageEmpty").style.display = result.items.length ? "none" : "block";
+      byId("usageRows").innerHTML = result.items.map((item) => `
+        <tr><td>${formatTime(item.created_at)}</td><td class="key">${escapeHtml(item.path)}</td><td>${item.cost}</td>
+        <td><span class="badge ${item.status === "success" ? "success-badge" : "failed"}">${item.status === "success" ? "成功" : item.status === "pending" ? "处理中" : "失败"}</span></td></tr>
+      `).join("");
+    }
+
+    function setupCanvas(canvas) {
+      const ratio = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      const context = canvas.getContext("2d");
+      context.scale(ratio, ratio);
+      return { context, width: rect.width, height: rect.height };
+    }
+
+    function drawGrid(context, width, height, maxValue) {
+      context.font = "11px sans-serif";
+      context.fillStyle = "#667085";
+      context.strokeStyle = "#e5e7eb";
+      for (let index = 0; index <= 4; index += 1) {
+        const y = 22 + (height - 60) * index / 4;
+        context.beginPath(); context.moveTo(42, y); context.lineTo(width - 14, y); context.stroke();
+        context.fillText(String(Math.round(maxValue * (4 - index) / 4)), 7, y + 4);
+      }
+    }
+
+    function drawTrend(items) {
+      const { context, width, height } = setupCanvas(byId("trendChart"));
+      const maxValue = Math.max(5, ...items.map((item) => Number(item.used || 0)));
+      drawGrid(context, width, height, maxValue);
+      const usableWidth = width - 60;
+      const usableHeight = height - 60;
+      const points = items.map((item, index) => ({
+        x: 42 + usableWidth * index / Math.max(1, items.length - 1),
+        y: 22 + usableHeight * (1 - Number(item.used || 0) / maxValue),
+        label: (item.date || "").slice(5)
+      }));
+      context.strokeStyle = "#2563eb"; context.lineWidth = 2; context.beginPath();
+      points.forEach((point, index) => index ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y));
+      context.stroke();
+      points.forEach((point) => {
+        context.fillStyle = "#2563eb"; context.beginPath(); context.arc(point.x, point.y, 4, 0, Math.PI * 2); context.fill();
+        context.fillStyle = "#667085"; context.fillText(point.label, point.x - 13, height - 10);
+      });
+    }
+
+    function drawDistribution(items) {
+      const { context, width, height } = setupCanvas(byId("distributionChart"));
+      const source = items.length ? items : [{ name: "NPC", used: 0 }, { name: "小说角色", used: 0 }, { name: "地名", used: 0 }];
+      const maxValue = Math.max(5, ...source.map((item) => Number(item.used || 0)));
+      drawGrid(context, width, height, maxValue);
+      const slot = (width - 60) / source.length;
+      const colors = ["#2563eb", "#12b76a", "#f59e0b"];
+      source.forEach((item, index) => {
+        const barHeight = (height - 60) * Number(item.used || 0) / maxValue;
+        const x = 42 + slot * index + slot * .25;
+        context.fillStyle = colors[index]; context.fillRect(x, height - 38 - barHeight, slot * .5, Math.max(2, barHeight));
+        context.fillStyle = "#667085"; context.fillText(item.name, 42 + slot * index + slot * .3, height - 10);
+      });
+    }
+
+    function updateCode() {
+      const endpoint = endpointOptions[endpointType];
+      const body = JSON.stringify({category:endpoint.category,surname:"",gender:"不限",length:"不限",style:"东方幻想",brand_tone:"",other:endpoint.other,exclude:[]});
+      byId("endpointPath").textContent = `POST ${endpoint.path}`;
+      byId("codeBlock").textContent = codeLanguage === "curl"
+        ? `curl -X POST "${API_BASE}${endpoint.path}" \\\n  -H "Content-Type: application/json" \\\n  -H "X-API-Key: ${currentExampleKey}" \\\n  -d '${body}'`
+        : `import requests\n\nresponse = requests.post(\n    "${API_BASE}${endpoint.path}",\n    headers={"X-API-Key": "${currentExampleKey}"},\n    json=${body}\n)\nprint(response.json())`;
+    }
+
+    async function loadDashboard() {
+      byId("status").textContent = "";
+      try {
+        const [stats, keys, usage] = await Promise.all([
+          requestJson("/api-key/stats"),
+          requestJson("/api-key/list"),
+          requestJson(`/api-key/usage?page=${usagePage}&page_size=${pageSize}`)
+        ]);
+        byId("totalKeys").textContent = stats.total_keys || 0;
+        byId("usedToday").textContent = stats.used_today || 0;
+        byId("remainingToday").textContent = stats.remaining_today || 0;
+        byId("totalUsed").textContent = stats.total_used || 0;
+        renderKeys(keys || []);
+        renderUsage(usage);
+        drawTrend(stats.recent_7_days || []);
+        drawDistribution(stats.endpoint_distribution || []);
+      } catch (error) {
+        byId("status").textContent = `${error.message}。如刚更新代码，请先重启后端。`;
+      }
+    }
+
+    async function changeStatus(id, action) {
+      byId("status").textContent = action === "enable" ? "正在启用 API Key..." : "正在禁用 API Key...";
+      try {
+        await requestJson(`/api-key/${action}`, { method: "POST", body: JSON.stringify({ key_id: id }) });
+        await loadDashboard();
+        byId("status").textContent = action === "enable" ? "API Key 已启用" : "API Key 已禁用";
+      } catch (error) {
+        const message = error.message === "请求失败" && action === "enable"
+          ? "启用接口尚未加载，请重启后端 main.py 后再试"
+          : error.message;
+        byId("status").textContent = message;
+        alert(message);
+      }
+    }
+
+    async function deleteKey(id, name) {
+      if (!confirm(`确认删除“${name}”吗？`)) return;
+      try {
+        await requestJson("/api-key/delete", { method: "POST", body: JSON.stringify({ key_id: id }) });
+        await loadDashboard();
+      } catch (error) { byId("status").textContent = error.message; }
+    }
+
+    function escapeHtml(value) {
+      const node = document.createElement("div");
+      node.textContent = value == null ? "" : String(value);
+      return node.innerHTML;
+    }
+
+    byId("backBtn").addEventListener("click", () => { window.location.href = "/page/index"; });
+    byId("createBtn").addEventListener("click", async () => {
+      const name = prompt("请输入 API Key 名称", "我的测试 Key");
+      if (!name || !name.trim()) return;
+      try {
+        const result = await requestJson("/api-key/create", { method: "POST", body: JSON.stringify({ name: name.trim() }) });
+        currentExampleKey = result.key;
+        localStorage.setItem("dashboard_api_key", result.key);
+        updateCode();
+        await loadDashboard();
+        alert(`API Key 已创建，请妥善保存：\n\n${result.key}`);
+      } catch (error) { byId("status").textContent = error.message; }
+    });
+    byId("prevBtn").addEventListener("click", () => { if (usagePage > 1) { usagePage -= 1; loadDashboard(); } });
+    byId("nextBtn").addEventListener("click", () => {
+      if (usagePage < Math.max(1, Math.ceil(usageTotal / pageSize))) { usagePage += 1; loadDashboard(); }
+    });
+    document.querySelectorAll("[data-lang]").forEach((button) => button.addEventListener("click", () => {
+      codeLanguage = button.dataset.lang;
+      document.querySelectorAll("[data-lang]").forEach((item) => item.classList.toggle("selected", item === button));
+      updateCode();
+    }));
+    document.querySelectorAll("[data-endpoint]").forEach((button) => button.addEventListener("click", () => {
+      endpointType = button.dataset.endpoint;
+      document.querySelectorAll("[data-endpoint]").forEach((item) => item.classList.toggle("selected", item === button));
+      updateCode();
+    }));
+    window.addEventListener("resize", () => loadDashboard());
+    updateCode();
+    loadDashboard();
+  </script>
+</body>
+</html>

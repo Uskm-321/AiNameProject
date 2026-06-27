@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import case, delete, exists, func, select, update
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
 from models.admin import (
@@ -10,7 +10,8 @@ from models.admin import (
     ReviewStatus,
     SensitiveWordRule,
 )
-from models.user import EmailCode, User, UserRole, UserSegment, UserStatus
+from models.community import CommunityPoll, CommunityPollOption, CommunityPollVote
+from models.user import APIKey, APIKeyStatus, EmailCode, User, UserRole, UserSegment, UserStatus
 from schemas.user_schemas import UserCreateSchema
 
 
@@ -46,9 +47,19 @@ class UserRepository:
             self.session.add(user)
             return user
 
+    async def create_admin_user(self, *, email: str, username: str, password: str, role: str):
+        async with self.session.begin():
+            user = User(email=email, username=username, password=password, role=role)
+            self.session.add(user)
+            return user
+
     async def get_by_email(self, email: str):
         async with self.session.begin():
             return await self.session.scalar(select(User).where(User.email == email))
+
+    async def get_by_username(self, username: str):
+        async with self.session.begin():
+            return await self.session.scalar(select(User).where(User.username == username))
 
     async def get_by_id(self, user_id: int):
         async with self.session.begin():
@@ -79,7 +90,13 @@ class UserRepository:
                 stmt = stmt.where(User.status == status)
             if blacklisted is not None:
                 stmt = stmt.where(User.blacklisted.is_(blacklisted))
-            stmt = stmt.order_by(User.id.desc()).offset(offset).limit(limit)
+            normalized_role = func.lower(User.role)
+            role_order = case(
+                (normalized_role == UserRole.SUPER_ADMIN.value, 0),
+                (normalized_role == UserRole.ADMIN.value, 1),
+                else_=2,
+            )
+            stmt = stmt.order_by(role_order, User.created_at.asc(), User.id.asc()).offset(offset).limit(limit)
             result = await self.session.scalars(stmt)
             return list(result)
 
@@ -102,6 +119,12 @@ class UserRepository:
             if blacklisted is not None:
                 stmt = stmt.where(User.blacklisted.is_(blacklisted))
             return await self.session.scalar(stmt)
+
+    async def count_super_admins(self):
+        async with self.session.begin():
+            return await self.session.scalar(
+                select(func.count(User.id)).where(User.role.in_([UserRole.SUPER_ADMIN.value, "SUPER_ADMIN"]))
+            )
 
     async def update_user_flags(
         self,
@@ -146,6 +169,11 @@ class UserRepository:
             user.status = UserStatus.BANNED.value
             user.ban_reason = ban_reason
             user.banned_until = banned_until
+            await self.session.execute(
+                update(APIKey)
+                .where(APIKey.user_id == user_id, APIKey.status == APIKeyStatus.ACTIVE.value)
+                .values(status=APIKeyStatus.DISABLED.value)
+            )
             return user
 
     async def unset_ban(self, user_id: int):
@@ -157,6 +185,11 @@ class UserRepository:
             user.ban_reason = None
             user.banned_until = None
             return user
+
+    async def clear_expired_ban(self, user: User):
+        if user.status != UserStatus.BANNED.value or not user.banned_until or user.banned_until > datetime.now():
+            return user
+        return await self.unset_ban(user.id)
 
     async def add_blacklist(self, user_id: int, reason: str | None = None):
         async with self.session.begin():
@@ -176,6 +209,25 @@ class UserRepository:
             user.blacklisted = False
             user.blacklist_reason = None
             user.blacklisted_at = None
+            return user
+
+    async def delete_user(self, user_id: int):
+        async with self.session.begin():
+            user = await self.session.scalar(select(User).where(User.id == user_id))
+            if not user:
+                return None
+            await self.session.execute(update(SensitiveWordRule).where(SensitiveWordRule.created_by == user_id).values(created_by=None))
+            await self.session.execute(delete(ModerationRecord).where(ModerationRecord.user_id == user_id))
+            await self.session.execute(update(ModerationRecord).where(ModerationRecord.reviewed_by == user_id).values(reviewed_by=None))
+            await self.session.execute(update(AdminActionLog).where(AdminActionLog.target_user_id == user_id).values(target_user_id=None))
+            await self.session.execute(delete(AdminActionLog).where(AdminActionLog.admin_user_id == user_id))
+            await self.session.execute(update(CommunityPoll).where(CommunityPoll.hidden_by == user_id).values(hidden_by=None))
+            await self.session.execute(delete(CommunityPollVote).where(CommunityPollVote.user_id == user_id))
+            poll_ids = select(CommunityPoll.id).where(CommunityPoll.user_id == user_id)
+            await self.session.execute(delete(CommunityPollVote).where(CommunityPollVote.poll_id.in_(poll_ids)))
+            await self.session.execute(delete(CommunityPollOption).where(CommunityPollOption.poll_id.in_(poll_ids)))
+            await self.session.execute(delete(CommunityPoll).where(CommunityPoll.user_id == user_id))
+            await self.session.delete(user)
             return user
 
 
@@ -214,32 +266,32 @@ class AdminRepository:
         self,
         word: str,
         reason: str | None = None,
-        severity: str = "BLOCK",
         created_by: int | None = None,
     ):
         async with self.session.begin():
             rule = await self.session.scalar(select(SensitiveWordRule).where(SensitiveWordRule.word == word))
             if rule:
                 rule.reason = reason
-                rule.severity = severity
                 rule.active = True
                 rule.created_by = created_by
                 return rule
-            rule = SensitiveWordRule(word=word, reason=reason, severity=severity, created_by=created_by)
+            rule = SensitiveWordRule(word=word, reason=reason, created_by=created_by)
             self.session.add(rule)
             return rule
 
-    async def disable_sensitive_word(self, word: str):
+    async def delete_sensitive_word(self, word: str):
         async with self.session.begin():
             rule = await self.session.scalar(select(SensitiveWordRule).where(SensitiveWordRule.word == word))
             if not rule:
                 return None
-            rule.active = False
+            await self.session.delete(rule)
             return rule
 
     async def list_sensitive_words(self):
         async with self.session.begin():
-            result = await self.session.scalars(select(SensitiveWordRule).order_by(SensitiveWordRule.id.desc()))
+            result = await self.session.scalars(
+                select(SensitiveWordRule).where(SensitiveWordRule.active.is_(True)).order_by(SensitiveWordRule.id.desc())
+            )
             return list(result)
 
     async def get_active_sensitive_words(self):

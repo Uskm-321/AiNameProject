@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta http-equiv="Cache-Control" content="no-store"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>邀请奖励</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;background:#f5f7fa;color:#172033}
+    .page{max-width:980px;margin:0 auto;padding:24px}.bar,.panel,.stat{background:#fff;border:1px solid #e5e7eb;border-radius:8px}
+    .bar{display:flex;align-items:center;justify-content:space-between;padding:18px;margin-bottom:18px}.title{font-size:24px;font-weight:700}.subtitle{margin-top:5px;color:#667085}
+    button{padding:9px 13px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;cursor:pointer}.stats{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+    .stat,.panel{padding:18px}.label{color:#667085;font-size:14px}.value{margin-top:8px;font-size:30px;font-weight:700}.credits{color:#b54708}
+    .panel{margin-bottom:18px}.panel-title{font-size:17px;font-weight:700}.copy-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding:12px;background:#f9fafb;border:1px solid #eaecf0;border-radius:6px}
+    .code{font:700 20px Consolas,monospace;color:#175cd3}.link{min-width:0;word-break:break-all;color:#475467}.rule{margin-top:16px;padding:12px;color:#b54708;background:#fffaeb;border-radius:6px}
+    table{width:100%;border-collapse:collapse;margin-top:12px}th,td{padding:11px;border-bottom:1px solid #eaecf0;text-align:left;font-size:14px}th{color:#667085;background:#f9fafb}.amount{color:#067647;font-weight:700}.status{color:#d92d20;margin-bottom:12px}
+    @media(max-width:600px){.stats{grid-template-columns:1fr}.copy-row{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="bar"><div><div class="title">邀请奖励</div><div class="subtitle">邀请好友注册，双方都可获得 credits</div></div><button onclick="location.href='/page/index'">返回起名页</button></section>
+    <div class="status" id="status"></div>
+    <section class="stats"><div class="stat"><div class="label">我的 credits</div><div class="value credits" id="credits">0</div></div><div class="stat"><div class="label">已邀请人数</div><div class="value" id="inviteCount">0</div></div></section>
+    <section class="panel"><div class="panel-title">我的邀请码</div><div class="copy-row"><span class="code" id="inviteCode">-</span><button onclick="copyValue('inviteCode')">复制</button></div><div class="panel-title" style="margin-top:20px">邀请链接</div><div class="copy-row"><span class="link" id="inviteLink">-</span><button onclick="copyValue('inviteLink')">复制链接</button></div><div class="rule">邀请人 +10 credits，被邀请人 +5 credits</div></section>
+    <section class="panel"><div class="panel-title">奖励记录</div><table><thead><tr><th>时间</th><th>奖励类型</th><th>关联用户</th><th>credits</th></tr></thead><tbody id="rows"></tbody></table></section>
+  </main>
+  <script>
+    const token=localStorage.getItem("token"),byId=id=>document.getElementById(id);
+    async function load(){try{const response=await fetch("/invitation/me",{headers:{authorization:`Bearer ${token}`}}),data=await response.json();if(!response.ok)throw new Error(typeof data.detail==="string"?data.detail:"请求失败");byId("credits").textContent=data.credits;byId("inviteCount").textContent=data.invite_count;byId("inviteCode").textContent=data.invite_code;byId("inviteLink").textContent=data.invite_link;byId("rows").innerHTML=data.rewards.length?data.rewards.map(item=>`<tr><td>${new Date(item.created_at).toLocaleString("zh-CN",{hour12:false})}</td><td>${item.reason==="INVITER_REWARD"?"成功邀请好友":"受邀注册奖励"}</td><td>${item.related_user_id||"-"}</td><td class="amount">+${item.amount}</td></tr>`).join(""):`<tr><td colspan="4" style="text-align:center;color:#98a2b3">暂无奖励记录</td></tr>`}catch(error){byId("status").textContent=`${error.message}。如刚更新代码，请重启后端。`}}
+    function copyValue(id){navigator.clipboard.writeText(byId(id).textContent).then(()=>alert("已复制"))}load();
+  </script>
+</body>
+</html>

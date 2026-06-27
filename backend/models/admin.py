@@ -19,11 +19,6 @@ class ReviewStatus(str, Enum):
     REVIEWED = "REVIEWED"
 
 
-class SensitiveWordSeverity(str, Enum):
-    BLOCK = "BLOCK"
-    WARN = "WARN"
-
-
 class AdminActionType(str, Enum):
     BAN = "BAN"
     UNBAN = "UNBAN"
@@ -32,8 +27,12 @@ class AdminActionType(str, Enum):
     ROLE_CHANGE = "ROLE_CHANGE"
     SEGMENT_CHANGE = "SEGMENT_CHANGE"
     SENSITIVE_WORD_UPSERT = "SENSITIVE_WORD_UPSERT"
-    SENSITIVE_WORD_DISABLE = "SENSITIVE_WORD_DISABLE"
+    SENSITIVE_WORD_DELETE = "SENSITIVE_WORD_DELETE"
     MODERATION_REVIEW = "MODERATION_REVIEW"
+    DELETE_USER = "DELETE_USER"
+    CREATE_USER = "CREATE_USER"
+    COMMUNITY_POLL_HIDE = "COMMUNITY_POLL_HIDE"
+    COMMUNITY_POLL_UNHIDE = "COMMUNITY_POLL_UNHIDE"
 
 
 class SensitiveWordRule(Base):
@@ -42,7 +41,6 @@ class SensitiveWordRule(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     word: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     reason: Mapped[str | None] = mapped_column(String(255))
-    severity: Mapped[str] = mapped_column(String(20), default=SensitiveWordSeverity.BLOCK.value, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)

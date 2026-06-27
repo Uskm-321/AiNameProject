@@ -6,6 +6,8 @@ fastapi-mail
 aiosmtplib
 redis
 pwdlib
+argon2-cffi
+PyJWT
 python-multipart
 langgraph
 langchain-deepseek

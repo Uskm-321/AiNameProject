@@ -34,3 +34,4 @@ class Base(DeclarativeBase):
 
 from . import user
 from . import admin
+from . import community

@@ -15,7 +15,9 @@
     
     <input class="input-box" v-model="form.password" type="password" placeholder="请输入密码 (至少6位)" />
     <input class="input-box" v-model="form.confirm_password" type="password" placeholder="请再次确认密码" />
-    
+    <input class="input-box" v-model="form.invite_code" placeholder="邀请码（选填）" />
+    <view v-if="form.invite_code" class="invite-tip">通过好友邀请注册，成功后获得 5 credits</view>
+
     <button class="btn-primary" :loading="loading" @click="handleRegister">立即注册</button>
     <view class="link" @click="goLogin">已有账号？去登录</view>
   </view>
@@ -23,6 +25,7 @@
 
 <script setup>
 import { ref } from 'vue';
+import { onLoad } from '@dcloudio/uni-app';
 import http from '@/http/http.js';
 
 // 表单数据绑定 (字段名严格对应后端 RegisterIn 的 Schema)
@@ -31,7 +34,8 @@ const form = ref({
   email: '',
   code: '',
   password: '',
-  confirm_password: ''
+  confirm_password: '',
+  invite_code: ''
 });
 
 const loading = ref(false);
@@ -104,6 +108,12 @@ const handleRegister = async () => {
 const goLogin = () => {
   uni.redirectTo({ url: '/pages/login/login' });
 };
+
+onLoad((options) => {
+  if (options && options.invite_code) {
+    form.value.invite_code = String(options.invite_code);
+  }
+});
 </script>
 
 <style scoped>
@@ -112,6 +122,7 @@ const goLogin = () => {
 
 /* 基础输入框 */
 .input-box { border-bottom: 1px solid #eee; padding: 24rpx 10rpx; margin-bottom: 30rpx; font-size: 28rpx;}
+.invite-tip { margin: -10rpx 0 24rpx; padding: 18rpx 20rpx; border-radius: 8rpx; background: #fffaeb; color: #b54708; font-size: 24rpx; }
 
 /* 验证码同行布局 */
 .code-group { display: flex; align-items: center; justify-content: space-between; margin-bottom: 30rpx;}

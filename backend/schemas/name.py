@@ -5,7 +5,7 @@ from .agent import NameSchema
 
 
 # 接收用户数据的改造，可以给多种场景起名
-CategoryLiteral = Literal["人名", "企业名", "宠物名"]
+CategoryLiteral = Literal["人名", "企业名", "宠物名", "NPC", "小说角色", "地名"]
 
 class NameIn(BaseModel):
     category: Annotated[CategoryLiteral, Field("人名", description="Name category")]
@@ -22,7 +22,7 @@ class NameIn(BaseModel):
     def validate_firstname(self):
         if self.category == "人名" and not self.surname:
             raise ValueError("生成姓名时，姓氏不能为空！")
-        if self.category in ("人名", "宠物名") and not self.style:
+        if self.category in ("人名", "宠物名", "NPC", "小说角色", "地名") and not self.style:
             raise ValueError("请选择名字风格")
         if self.category == "企业名" and not self.brand_tone:
             raise ValueError("请选择品牌调性")

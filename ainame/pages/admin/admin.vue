@@ -6,7 +6,6 @@
         <view class="subtitle">{{ currentUser.email || 'ADMIN' }}</view>
       </view>
       <view class="top-actions">
-        <button class="ghost-btn" size="mini" @click="goApp">起名页</button>
         <button class="danger-btn mini" size="mini" @click="logout">退出</button>
       </view>
     </view>
@@ -30,18 +29,35 @@
       </view>
     </view>
 
-    <scroll-view class="tabs" scroll-x>
-      <view
-        v-for="tab in tabs"
-        :key="tab.key"
-        :class="['tab', activeTab === tab.key ? 'active' : '']"
-        @click="switchTab(tab.key)"
-      >
-        {{ tab.label }}
+    <view class="workspace-panel">
+      <view class="workspace-actions">
+        <button class="ghost-btn mini" size="mini" @click="goUsers">用户管理</button>
+        <button v-if="isSuperAdminRole(currentUser.role)" class="primary-btn mini" size="mini" @click="goApp">起名页面</button>
+        <button class="ghost-btn mini" size="mini" @click="switchTab('community')">社区管理</button>
       </view>
-    </scroll-view>
+      <scroll-view class="tabs" scroll-x>
+        <view
+          v-for="tab in tabs"
+          :key="tab.key"
+          :class="['tab', activeTab === tab.key ? 'active' : '']"
+          @click="switchTab(tab.key)"
+        >
+          {{ tab.label }}
+        </view>
+      </scroll-view>
+    </view>
 
     <view v-if="activeTab === 'users'" class="panel">
+      <view v-if="isSuperAdminRole(currentUser.role)" class="form-row">
+        <input class="input" v-model="newUser.username" placeholder="用户名，例如 111" />
+        <input class="input" v-model="newUser.email" placeholder="邮箱，例如 111@qq.com" />
+        <input class="input" v-model="newUser.password" password placeholder="密码 6-8 位" />
+        <picker :range="createRoleOptions" @change="e => newUser.role = createRoleOptions[e.detail.value]">
+          <view class="filter">{{ roleLabel(newUser.role) }}</view>
+        </picker>
+        <button class="primary-btn compact" size="mini" @click="createUser">创建账号</button>
+      </view>
+
       <view class="toolbar">
         <input class="search" v-model="userQuery.keyword" placeholder="搜索邮箱或用户名" confirm-type="search" @confirm="loadUsers" />
         <picker :range="segmentOptions" @change="onSegmentFilter">
@@ -64,25 +80,27 @@
           <view class="user-cell">
             <text class="strong">{{ user.username }}</text>
             <text class="muted">{{ user.email }}</text>
-            <text class="muted">ID {{ user.id }} · {{ user.role }}</text>
+            <text class="muted">ID {{ user.id }} · {{ roleLabel(user.role) }}</text>
           </view>
           <view class="stack">
-            <picker :range="['B', 'C']" @change="e => changeSegment(user, ['B', 'C'][e.detail.value])">
+            <picker :range="['B', 'C']" @change="e => user.user_segment = ['B', 'C'][e.detail.value]">
               <view class="chip">{{ user.user_segment }}</view>
             </picker>
-            <picker :range="['USER', 'ADMIN']" @change="e => changeRole(user, ['USER', 'ADMIN'][e.detail.value])">
-              <view class="link-btn">{{ user.role === 'ADMIN' ? '管理员' : '设为管理员' }}</view>
+            <picker v-if="canManageUser(user)" :range="roleOptions" @change="e => user.role = roleOptions[e.detail.value]">
+              <view class="link-btn">修改角色</view>
             </picker>
           </view>
           <view class="stack">
             <text :class="['status', user.status === 'ACTIVE' ? 'ok' : 'blocked']">{{ user.status }}</text>
+            <text v-if="user.status === 'BANNED'" class="muted">{{ user.ban_reason || '无冻结理由' }} · {{ formatBanDeadline(user) }}</text>
             <text v-if="user.blacklisted" class="status blocked">BLACKLIST</text>
           </view>
           <view class="actions">
-            <button v-if="user.status === 'ACTIVE'" class="warn-btn mini" size="mini" @click="banUser(user)">封禁</button>
-            <button v-else class="primary-btn mini" size="mini" @click="unbanUser(user)">解封</button>
-            <button v-if="!user.blacklisted" class="danger-btn mini" size="mini" @click="blacklistUser(user)">拉黑</button>
-            <button v-else class="ghost-btn mini" size="mini" @click="removeBlacklist(user)">移出</button>
+            <button v-if="canManageUser(user)" class="primary-btn mini" size="mini" @click="saveUser(user)">保存</button>
+            <button v-if="canManageUser(user) && user.status === 'ACTIVE'" class="warn-btn mini" size="mini" @click="banUser(user)">冻结</button>
+            <button v-if="canManageUser(user) && user.status !== 'ACTIVE'" class="primary-btn mini" size="mini" @click="unbanUser(user)">取消冻结</button>
+            <button v-if="canManageUser(user) && !user.blacklisted" class="danger-btn mini" size="mini" @click="blacklistUser(user)">拉黑</button>
+            <button v-if="canManageUser(user) && user.blacklisted" class="ghost-btn mini" size="mini" @click="removeBlacklist(user)">移出</button>
           </view>
         </view>
       </view>
@@ -92,9 +110,6 @@
       <view class="form-row">
         <input class="input" v-model="wordForm.word" placeholder="敏感词" />
         <input class="input" v-model="wordForm.reason" placeholder="拦截原因" />
-        <picker :range="['BLOCK', 'WARN']" @change="e => wordForm.severity = ['BLOCK', 'WARN'][e.detail.value]">
-          <view class="filter">{{ wordForm.severity }}</view>
-        </picker>
         <button class="primary-btn compact" size="mini" @click="saveWord">保存</button>
       </view>
       <view class="list">
@@ -105,7 +120,7 @@
           </view>
           <view class="actions">
             <text :class="['status', word.active ? 'ok' : 'blocked']">{{ word.active ? '启用' : '停用' }}</text>
-            <button v-if="word.active" class="danger-btn mini" size="mini" @click="disableWord(word)">停用</button>
+            <button class="danger-btn mini" size="mini" @click="disableWord(word)">删除</button>
           </view>
         </view>
       </view>
@@ -139,6 +154,24 @@
         </view>
       </view>
     </view>
+
+    <view v-if="activeTab === 'community'" class="panel">
+      <view class="list">
+        <view v-for="poll in communityPolls" :key="poll.id" class="list-item community-item">
+          <view class="community-main">
+            <text class="strong">#{{ poll.id }} 用户 {{ poll.username }} 发布的起名投票</text>
+            <text class="muted">{{ poll.naming_type }} · {{ formatTime(poll.created_at) }}</text>
+            <text class="muted">候选：{{ poll.options.map(item => item.name).join('、') }}</text>
+            <text v-if="poll.ai_analysis" class="muted">AI 分析：{{ poll.ai_analysis }}</text>
+            <text v-if="poll.hidden" class="status blocked">已隐藏：{{ poll.hidden_reason || '-' }}</text>
+          </view>
+          <view class="actions">
+            <button v-if="!poll.hidden" class="danger-btn mini" size="mini" @click="hideCommunityPoll(poll)">隐藏</button>
+            <button v-else class="primary-btn mini" size="mini" @click="unhideCommunityPoll(poll)">取消隐藏</button>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -150,7 +183,8 @@ const tabs = [
   { key: 'users', label: '用户与权限' },
   { key: 'words', label: '敏感词' },
   { key: 'moderation', label: '内容巡查' },
-  { key: 'logs', label: '审计日志' }
+  { key: 'logs', label: '审计日志' },
+  { key: 'community', label: '社区投票' }
 ];
 
 const activeTab = ref('users');
@@ -160,17 +194,56 @@ const usersTotal = ref(0);
 const sensitiveWords = ref([]);
 const moderationRecords = ref([]);
 const actionLogs = ref([]);
+const communityPolls = ref([]);
 const userQuery = ref({ page: 1, page_size: 20, keyword: '', user_segment: '', status: '' });
-const wordForm = ref({ word: '', reason: '', severity: 'BLOCK' });
+const wordForm = ref({ word: '', reason: '' });
 const segmentOptions = ['全部画像', 'B', 'C'];
 const statusOptions = ['全部状态', 'ACTIVE', 'BANNED'];
+const roleOptions = ['USER', 'ADMIN'];
+const createRoleOptions = ['USER', 'ADMIN'];
+const newUser = ref({ email: '', username: '', password: '', role: 'USER' });
+const freezeDurationOptions = [
+  { label: '1天', days: 1 },
+  { label: '7天', days: 7 },
+  { label: '30天', days: 30 },
+  { label: '永久', days: null }
+];
+const adminRoles = ['admin', 'super_admin', 'ADMIN', 'SUPER_ADMIN'];
+const superAdminRoles = ['super_admin', 'SUPER_ADMIN'];
+const isAdminRole = (role) => adminRoles.includes(role);
+const isSuperAdminRole = (role) => superAdminRoles.includes(role);
+const canManageUser = (user) => isSuperAdminRole(currentUser.value.role) && user.id !== currentUser.value.id;
+const roleLabel = (role) => String(role || '').toUpperCase();
 
 const bannedCount = computed(() => users.value.filter(item => item.status === 'BANNED').length);
 const blacklistedCount = computed(() => users.value.filter(item => item.blacklisted).length);
 const pendingReviewCount = computed(() => moderationRecords.value.filter(item => item.review_status !== 'REVIEWED').length);
 
+const roleWeight = (role) => {
+  const normalized = String(role || '').toLowerCase();
+  if (normalized === 'super_admin') return 0;
+  if (normalized === 'admin') return 1;
+  return 2;
+};
+
+const sortUsers = (items) => [...items].sort((left, right) => {
+  const roleDiff = roleWeight(left.role) - roleWeight(right.role);
+  if (roleDiff) return roleDiff;
+  const leftTime = new Date(left.created_at || 0).getTime();
+  const rightTime = new Date(right.created_at || 0).getTime();
+  if (leftTime !== rightTime) return leftTime - rightTime;
+  return Number(left.id || 0) - Number(right.id || 0);
+});
+
+const calcBannedUntil = (days) => {
+  if (days === null) return null;
+  const until = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  const local = new Date(until.getTime() - until.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 19);
+};
+
 const ensureAdmin = () => {
-  if (!currentUser.value || currentUser.value.role !== 'ADMIN') {
+  if (!currentUser.value || !isAdminRole(currentUser.value.role)) {
     uni.showToast({ title: '需要管理员权限', icon: 'none' });
     setTimeout(() => uni.reLaunch({ url: '/pages/index/index' }), 800);
   }
@@ -182,11 +255,12 @@ const switchTab = async (key) => {
   if (key === 'words') await loadSensitiveWords();
   if (key === 'moderation') await loadModerationRecords();
   if (key === 'logs') await loadActionLogs();
+  if (key === 'community') await loadCommunityPolls();
 };
 
 const loadUsers = async () => {
   const res = await http.getAdminUsers(userQuery.value);
-  users.value = res.items || [];
+  users.value = sortUsers(res.items || []);
   usersTotal.value = res.total || 0;
 };
 
@@ -204,6 +278,11 @@ const loadActionLogs = async () => {
   actionLogs.value = res.items || [];
 };
 
+const loadCommunityPolls = async () => {
+  const res = await http.getAdminCommunityPolls({ page: 1, page_size: 50 });
+  communityPolls.value = res.items || [];
+};
+
 const safeLoad = async (loader) => {
   try {
     await loader();
@@ -217,6 +296,7 @@ const refreshAll = async () => {
   await safeLoad(loadSensitiveWords);
   await safeLoad(loadModerationRecords);
   await safeLoad(loadActionLogs);
+  await safeLoad(loadCommunityPolls);
 };
 
 const onSegmentFilter = (e) => {
@@ -231,33 +311,53 @@ const onStatusFilter = (e) => {
   loadUsers();
 };
 
-const changeRole = async (user, role) => {
-  if (user.role === role) return;
-  await http.updateAdminUserRole(user.id, role);
+const saveUser = async (user) => {
+  await http.updateAdminUserRole(user.id, user.role);
+  await http.updateAdminUserSegment(user.id, user.user_segment);
+  uni.showToast({ title: '用户信息保存成功', icon: 'success' });
   await loadUsers();
 };
 
-const changeSegment = async (user, segment) => {
-  if (user.user_segment === segment) return;
-  await http.updateAdminUserSegment(user.id, segment);
+const createUser = async () => {
+  if (!newUser.value.email || !newUser.value.username || !newUser.value.password) {
+    return uni.showToast({ title: '请填写完整账号信息', icon: 'none' });
+  }
+  await http.createAdminUser(newUser.value);
+  uni.showToast({ title: '账号创建成功', icon: 'success' });
+  newUser.value = { email: '', username: '', password: '', role: 'USER' };
   await loadUsers();
 };
 
 const banUser = (user) => {
-  uni.showModal({
-    title: '封禁用户',
-    editable: true,
-    placeholderText: '封禁原因',
-    success: async (res) => {
-      if (!res.confirm) return;
-      await http.banAdminUser(user.id, { reason: res.content || '管理员封禁' });
-      await loadUsers();
+  uni.showActionSheet({
+    itemList: freezeDurationOptions.map(item => item.label),
+    success: ({ tapIndex }) => {
+      const duration = freezeDurationOptions[tapIndex];
+      uni.showModal({
+        title: '冻结用户',
+        editable: true,
+        placeholderText: '请输入冻结理由',
+        success: async (res) => {
+          const reason = (res.content || '').trim();
+          if (!res.confirm) return;
+          if (!reason) {
+            return uni.showToast({ title: '请输入冻结理由', icon: 'none' });
+          }
+          await http.banAdminUser(user.id, {
+            reason,
+            banned_until: calcBannedUntil(duration.days)
+          });
+          uni.showToast({ title: '冻结成功', icon: 'success' });
+          await loadUsers();
+        }
+      });
     }
   });
 };
 
 const unbanUser = async (user) => {
   await http.unbanAdminUser(user.id);
+  uni.showToast({ title: '取消冻结成功', icon: 'success' });
   await loadUsers();
 };
 
@@ -269,6 +369,7 @@ const blacklistUser = (user) => {
     success: async (res) => {
       if (!res.confirm) return;
       await http.addAdminBlacklist(user.id, res.content || '管理员拉黑');
+      uni.showToast({ title: '拉黑成功', icon: 'success' });
       await loadUsers();
     }
   });
@@ -276,6 +377,7 @@ const blacklistUser = (user) => {
 
 const removeBlacklist = async (user) => {
   await http.removeAdminBlacklist(user.id);
+  uni.showToast({ title: '移出成功', icon: 'success' });
   await loadUsers();
 };
 
@@ -284,7 +386,7 @@ const saveWord = async () => {
     return uni.showToast({ title: '请输入敏感词', icon: 'none' });
   }
   await http.saveSensitiveWord(wordForm.value);
-  wordForm.value = { word: '', reason: '', severity: 'BLOCK' };
+  wordForm.value = { word: '', reason: '' };
   await loadSensitiveWords();
 };
 
@@ -298,12 +400,40 @@ const reviewRecord = async (item) => {
   await loadModerationRecords();
 };
 
+const hideCommunityPoll = (poll) => {
+  uni.showModal({
+    title: '隐藏投票',
+    editable: true,
+    placeholderText: '请输入隐藏理由',
+    success: async (res) => {
+      const reason = (res.content || '').trim();
+      if (!res.confirm) return;
+      if (!reason) {
+        return uni.showToast({ title: '请输入隐藏理由', icon: 'none' });
+      }
+      await http.hideCommunityPoll(poll.id, reason);
+      await loadCommunityPolls();
+    }
+  });
+};
+
+const unhideCommunityPoll = async (poll) => {
+  await http.unhideCommunityPoll(poll.id);
+  await loadCommunityPolls();
+};
+
 const formatTime = (value) => {
   if (!value) return '-';
   return String(value).replace('T', ' ').slice(0, 19);
 };
 
+const formatBanDeadline = (user) => {
+  if (!user.banned_until) return '永久';
+  return `至 ${formatTime(user.banned_until)}`;
+};
+
 const goApp = () => uni.reLaunch({ url: '/pages/index/index' });
+const goUsers = () => uni.navigateTo({ url: '/pages/admin/users' });
 
 const logout = () => {
   uni.removeStorageSync('token');
@@ -327,7 +457,9 @@ onMounted(async () => {
 .stat { background: #fff; border: 1px solid #e5e7eb; border-radius: 8rpx; padding: 22rpx; }
 .stat-label { display: block; color: #667085; font-size: 24rpx; }
 .stat-value { display: block; margin-top: 8rpx; font-size: 42rpx; font-weight: 700; color: #111827; }
-.tabs { white-space: nowrap; margin-bottom: 20rpx; }
+.workspace-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8rpx; padding: 20rpx 20rpx 0; margin-bottom: 20rpx; }
+.workspace-actions { display: flex; justify-content: flex-end; gap: 12rpx; flex-wrap: wrap; margin-bottom: 18rpx; }
+.tabs { white-space: nowrap; }
 .tab { display: inline-flex; padding: 18rpx 26rpx; margin-right: 12rpx; background: #fff; border: 1px solid #d8dee8; border-radius: 8rpx; color: #475467; font-size: 26rpx; }
 .tab.active { background: #165dff; border-color: #165dff; color: #fff; font-weight: 600; }
 .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8rpx; padding: 20rpx; }
@@ -355,6 +487,8 @@ button { margin: 0; }
 .list { display: flex; flex-direction: column; gap: 14rpx; }
 .list-item, .audit-item { border: 1px solid #edf0f3; border-radius: 8rpx; padding: 18rpx; }
 .list-item { display: flex; justify-content: space-between; gap: 18rpx; align-items: center; }
+.community-item { align-items: flex-start; }
+.community-main { display: flex; flex-direction: column; gap: 8rpx; min-width: 0; flex: 1; }
 .audit-head { display: flex; justify-content: space-between; align-items: center; gap: 16rpx; margin-bottom: 8rpx; }
 .audit-text { margin-top: 12rpx; padding: 14rpx; background: #f9fafb; border-radius: 8rpx; color: #344054; font-size: 24rpx; line-height: 1.6; word-break: break-all; }
 .matched { margin-top: 10rpx; color: #c01048; font-size: 24rpx; }

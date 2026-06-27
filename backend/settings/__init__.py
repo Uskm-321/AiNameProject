@@ -18,3 +18,7 @@ JWT_SECRET_KEY = "wrwetsgsdfrtuighj" # 自定义
 
 JWT_ACCESS_TOKEN_EXPIRES=timedelta(days=1)
 JWT_REFRESH_TOKEN_EXPIRES=timedelta(days=30)
+
+# 邀请注册链接模板。留空则使用当前请求域名 + uni-app 注册页 hash 路由。
+# 示例: "http://127.0.0.1:5173/#/pages/register/register?invite_code={invite_code}"
+INVITE_REGISTER_LINK_TEMPLATE = ""

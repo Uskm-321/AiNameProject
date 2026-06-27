@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>管理后台</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f4f6f8; color: #172033; }
+    .page { max-width: 1220px; margin: 0 auto; padding: 24px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .title { font-size: 24px; font-weight: 700; }
+    .subtitle { color: #667085; margin-top: 6px; }
+    .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; }
+    .panel-head { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+    .workspace-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .tabs, .toolbar, .pager, .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .tabs { margin-bottom: 16px; }
+    .toolbar { margin: 12px 0; }
+    .pager { margin-top: 14px; color: #667085; }
+    .tab { padding: 10px 14px; background: #165dff; color: #fff; border-radius: 6px; font-size: 14px; cursor: pointer; user-select: none; }
+    .tab.inactive { background: #eef2ff; color: #165dff; }
+    .search, .input, .page-input, select { border: 1px solid #d8dee8; border-radius: 6px; background: #fff; padding: 8px 10px; }
+    .search { min-width: 260px; }
+    .input { min-width: 180px; }
+    .page-input { width: 88px; }
+    .status { margin: 12px 0; color: #667085; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; background: #fff; }
+    th, td { padding: 12px; border-bottom: 1px solid #edf0f3; text-align: left; font-size: 14px; vertical-align: middle; }
+    th { color: #667085; font-weight: 600; }
+    .role, .badge { display: inline-block; padding: 4px 8px; border-radius: 6px; background: #eef2ff; color: #3538cd; }
+    .active { color: #067647; }
+    .empty { padding: 24px 0; color: #667085; }
+    .primary { background: #165dff; color: #fff; border-color: #165dff; }
+    .warn { background: #f79009; color: #fff; border-color: #f79009; }
+    .danger { background: #d92d20; color: #fff; border-color: #d92d20; }
+    button { border: 1px solid #d8dee8; border-radius: 6px; background: #fff; padding: 8px 12px; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: default; }
+    .modal-mask { position: fixed; inset: 0; background: rgba(15, 23, 42, .36); display: none; align-items: center; justify-content: center; z-index: 10; }
+    .modal-mask.show { display: flex; }
+    .modal { width: min(420px, calc(100vw - 32px)); background: #fff; border-radius: 8px; border: 1px solid #e5e7eb; padding: 18px; box-shadow: 0 18px 45px rgba(15, 23, 42, .18); }
+    .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 14px; }
+    .modal-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; color: #475467; font-size: 14px; }
+    .modal-row input, .modal-row select { width: 100%; box-sizing: border-box; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="topbar">
+      <div>
+        <div class="title">管理员工作台</div>
+        <div class="subtitle" id="account">ADMIN</div>
+      </div>
+      <button id="logout">退出</button>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div id="workspaceActions" class="workspace-actions"></div>
+      </div>
+      <div class="tabs">
+        <div class="tab" data-tab="users">用户与权限</div>
+        <div class="tab inactive" data-tab="words">敏感词</div>
+        <div class="tab inactive" data-tab="moderation">内容巡查</div>
+        <div class="tab inactive" data-tab="logs">审计日志</div>
+        <div class="tab inactive" data-tab="community">社区投票管理</div>
+      </div>
+
+      <div id="loadStatus" class="status">正在加载用户...</div>
+      <div id="content"></div>
+    </section>
+  </main>
+
+  <div id="freezeModal" class="modal-mask">
+    <div class="modal">
+      <div class="modal-title">冻结用户</div>
+      <label class="modal-row">
+        冻结理由
+        <input id="freezeReason" class="input" placeholder="请输入冻结理由">
+      </label>
+      <label class="modal-row">
+        冻结时长
+        <select id="freezeDuration">
+          <option value="1">1天</option>
+          <option value="7">7天</option>
+          <option value="30">30天</option>
+          <option value="permanent">永久</option>
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button onclick="closeFreezeModal()">取消</button>
+        <button class="warn" onclick="submitFreeze()">确认冻结</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    const content = document.querySelector("#content");
+    const loadStatus = document.querySelector("#loadStatus");
+    const tabs = Array.from(document.querySelectorAll(".tab"));
+    const workspaceActions = document.querySelector("#workspaceActions");
+    const superAdminRoles = ["super_admin", "SUPER_ADMIN"];
+    const userState = { page: 1, pageSize: 20, keyword: "", total: 0 };
+    let pendingFreezeUserId = null;
+
+    document.querySelector("#account").textContent = `${currentUser.email || "ADMIN"} · ${currentUser.role || ""}`;
+
+    function isSuperAdmin() {
+      return superAdminRoles.includes(currentUser.role);
+    }
+
+    function roleLabel(role) {
+      return String(role || "").toUpperCase();
+    }
+
+    function normalizeRoleSelects() {
+      document.querySelectorAll("#newRole, select[id^='role-']").forEach((select) => {
+        const current = String(select.value || "").toLowerCase();
+        select.innerHTML = `
+          <option value="USER" ${current === "user" ? "selected" : ""}>USER</option>
+          <option value="ADMIN" ${current === "admin" ? "selected" : ""}>ADMIN</option>
+        `;
+      });
+    }
+
+    function renderWorkspaceActions() {
+      workspaceActions.innerHTML = `
+        ${isSuperAdmin() ? '<button class="primary" onclick="goNamingPage()">起名页面</button>' : ""}
+        <button onclick="goUserManagement()">用户管理</button>
+        <button onclick="loadCommunity()">社区管理</button>
+      `;
+    }
+
+    function goNamingPage() {
+      window.location.href = "/page/index";
+    }
+
+    function goUserManagement() {
+      window.location.href = "/static/admin-users-preview.html";
+    }
+
+    function showSuccess(message) {
+      loadStatus.textContent = message;
+      loadStatus.style.color = "#067647";
+    }
+
+    function showError(message) {
+      loadStatus.textContent = message;
+      loadStatus.style.color = "#d92d20";
+    }
+
+    function roleWeight(role) {
+      const normalized = String(role || "").toLowerCase();
+      if (normalized === "super_admin") return 0;
+      if (normalized === "admin") return 1;
+      return 2;
+    }
+
+    function sortUsers(items) {
+      return [...items].sort((left, right) => {
+        const roleDiff = roleWeight(left.role) - roleWeight(right.role);
+        if (roleDiff) return roleDiff;
+        const leftTime = new Date(left.created_at || 0).getTime();
+        const rightTime = new Date(right.created_at || 0).getTime();
+        if (leftTime !== rightTime) return leftTime - rightTime;
+        return Number(left.id || 0) - Number(right.id || 0);
+      });
+    }
+
+    function formatDateTime(value) {
+      if (!value) return "";
+      return String(value).replace("T", " ").slice(0, 19);
+    }
+
+    function calcBannedUntil(duration) {
+      if (duration === "permanent") return null;
+      const days = Number(duration);
+      const until = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+      const local = new Date(until.getTime() - until.getTimezoneOffset() * 60 * 1000);
+      return local.toISOString().slice(0, 19);
+    }
+
+    function formatBanDeadline(item) {
+      if (item.status !== "BANNED") return "";
+      return item.banned_until ? ` / 至 ${formatDateTime(item.banned_until)}` : " / 永久";
+    }
+
+    function authHeaders(extra = {}) {
+      return token ? { authorization: `Bearer ${token}`, ...extra } : extra;
+    }
+
+    async function requestJson(url, options = {}) {
+      if (!token) throw new Error("未找到登录 token，请重新登录。");
+      const res = await fetch(url, { ...options, headers: authHeaders(options.headers || {}) });
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (error) {
+        data = {};
+      }
+      if (!res.ok) {
+        if (res.status === 405 && url === "/admin/users") {
+          throw new Error("创建账号接口未加载，请重启后端 main.py");
+        }
+        if (typeof data.detail === "string") {
+          throw new Error(data.detail);
+        }
+        if (Array.isArray(data.detail) && data.detail[0]) {
+          throw new Error(data.detail[0].msg || "参数校验失败");
+        }
+        throw new Error(text || `请求失败：${res.status}`);
+      }
+      return data;
+    }
+
+    function setActiveTab(name) {
+      tabs.forEach((tab) => tab.classList.toggle("inactive", tab.dataset.tab !== name));
+    }
+
+    function renderTable(headers, rows) {
+      if (!rows.length) {
+        content.innerHTML = '<div class="empty">暂无数据</div>';
+        return;
+      }
+      content.innerHTML = `
+        <table>
+          <thead><tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr></thead>
+          <tbody>${rows.join("")}</tbody>
+        </table>
+      `;
+    }
+
+    async function updateRole(userId, role) {
+      await requestJson(`/admin/users/${userId}/role`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ role })
+      });
+      await loadUsers("角色修改成功");
+    }
+
+    async function updateSegment(userId, segment) {
+      await requestJson(`/admin/users/${userId}/segment`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ user_segment: segment })
+      });
+      await loadUsers("画像修改成功");
+    }
+
+    async function saveUser(userId) {
+      const role = document.querySelector(`#role-${userId}`)?.value?.toUpperCase();
+      const segment = document.querySelector(`#segment-${userId}`)?.value;
+      try {
+        if (role) {
+          await requestJson(`/admin/users/${userId}/role`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ role })
+          });
+        }
+        if (segment) {
+          await requestJson(`/admin/users/${userId}/segment`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ user_segment: segment })
+          });
+        }
+        await loadUsers("用户信息保存成功");
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function createUser() {
+      const username = document.querySelector("#newUsername").value.trim();
+      const email = document.querySelector("#newEmail").value.trim();
+      const password = document.querySelector("#newPassword").value.trim();
+      const role = document.querySelector("#newRole").value.toUpperCase();
+      if (!email || !username || !password) {
+        showError("请填写邮箱、用户名和密码");
+        return;
+      }
+      try {
+        await requestJson("/admin/users", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email, username, password, role })
+        });
+        userState.page = 1;
+        await loadUsers("账号创建成功");
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    function freezeUser(userId) {
+      pendingFreezeUserId = userId;
+      document.querySelector("#freezeReason").value = "";
+      document.querySelector("#freezeDuration").value = "1";
+      document.querySelector("#freezeModal").classList.add("show");
+    }
+
+    function closeFreezeModal() {
+      pendingFreezeUserId = null;
+      document.querySelector("#freezeModal").classList.remove("show");
+    }
+
+    async function submitFreeze() {
+      const reason = document.querySelector("#freezeReason").value.trim();
+      const duration = document.querySelector("#freezeDuration").value;
+      if (!pendingFreezeUserId || !reason) {
+        window.alert("请输入冻结理由");
+        return;
+      }
+      await requestJson(`/admin/users/${pendingFreezeUserId}/ban`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason, banned_until: calcBannedUntil(duration) })
+      });
+      closeFreezeModal();
+      await loadUsers("冻结成功");
+    }
+
+    async function unfreezeUser(userId) {
+      if (!window.confirm("确认解冻这个用户？")) return;
+      await requestJson(`/admin/users/${userId}/unban`, { method: "POST" });
+      await loadUsers("取消冻结成功");
+    }
+
+    async function blacklistUser(userId) {
+      const reason = window.prompt("请输入黑名单原因");
+      if (!reason) return;
+      await requestJson(`/admin/users/${userId}/blacklist`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason })
+      });
+      await loadUsers("拉黑成功");
+    }
+
+    async function removeBlacklist(userId) {
+      if (!window.confirm("确认移出黑名单？")) return;
+      await requestJson(`/admin/users/${userId}/blacklist`, { method: "DELETE" });
+      await loadUsers("移出黑名单成功");
+    }
+
+    async function deleteUser(userId) {
+      if (!window.confirm("确认删除这个用户？此操作不可恢复。")) return;
+      await requestJson(`/admin/users/${userId}`, { method: "DELETE" });
+      await loadUsers("删除用户成功");
+    }
+
+    function searchUsers() {
+      const keywordInput = document.querySelector("#userKeyword");
+      userState.keyword = keywordInput ? keywordInput.value.trim() : "";
+      userState.page = 1;
+      loadUsers();
+    }
+
+    function jumpUsersPage(page) {
+      const totalPages = Math.max(1, Math.ceil(userState.total / userState.pageSize));
+      userState.page = Math.min(Math.max(1, Number(page) || 1), totalPages);
+      loadUsers();
+    }
+
+    async function saveWord() {
+      const word = document.querySelector("#wordInput").value.trim();
+      const reason = document.querySelector("#wordReason").value.trim();
+      if (!word) return window.alert("请输入敏感词");
+      await requestJson("/admin/sensitive-words", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ word, reason })
+      });
+      await loadWords();
+    }
+
+    async function disableWord(word) {
+      if (!window.confirm(`确认删除敏感词：${word}？`)) return;
+      await requestJson(`/admin/sensitive-words/${encodeURIComponent(word)}`, { method: "DELETE" });
+      await loadWords();
+    }
+
+    async function reviewRecord(recordId) {
+      await requestJson(`/admin/moderation-records/${recordId}/review`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note: "管理员已复核" })
+      });
+      await loadModeration();
+    }
+
+    async function hideCommunityPoll(pollId) {
+      const reason = window.prompt("请输入隐藏理由");
+      if (!reason) return;
+      await requestJson(`/community/admin/polls/${pollId}/hide`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason })
+      });
+      await loadCommunity();
+    }
+
+    async function unhideCommunityPoll(pollId) {
+      await requestJson(`/community/admin/polls/${pollId}/unhide`, { method: "POST" });
+      await loadCommunity();
+    }
+
+    Object.assign(window, {
+      updateRole,
+      updateSegment,
+      saveUser,
+      createUser,
+      freezeUser,
+      closeFreezeModal,
+      submitFreeze,
+      unfreezeUser,
+      blacklistUser,
+      removeBlacklist,
+      deleteUser,
+      searchUsers,
+      jumpUsersPage,
+      saveWord,
+      disableWord,
+      reviewRecord,
+      goNamingPage,
+      loadCommunity,
+      hideCommunityPoll,
+      unhideCommunityPoll
+    });
+
+    async function loadUsers(successMessage = "") {
+      setActiveTab("users");
+      loadStatus.style.color = "#667085";
+      loadStatus.textContent = "正在加载用户...";
+      try {
+        const params = new URLSearchParams({ page: String(userState.page), page_size: String(userState.pageSize) });
+        if (userState.keyword) params.set("keyword", userState.keyword);
+        const data = await requestJson(`/admin/users?${params.toString()}`);
+        const items = sortUsers(data.items || []);
+        userState.total = data.total || 0;
+        const totalPages = Math.max(1, Math.ceil(userState.total / userState.pageSize));
+        if (successMessage) {
+          showSuccess(successMessage);
+        }
+        loadStatus.textContent = `共 ${userState.total || items.length} 个用户 · 第 ${userState.page} / ${totalPages} 页`;
+
+        if (successMessage) {
+          showSuccess(successMessage);
+        }
+
+        const rows = items.map((item) => {
+          const canManageUser = isSuperAdmin() && item.id !== currentUser.id;
+          const roleCell = canManageUser
+            ? `<select id="role-${item.id}">
+                 <option value="user" ${item.role === "user" ? "selected" : ""}>普通用户</option>
+                 <option value="admin" ${item.role === "admin" ? "selected" : ""}>管理员</option>
+               </select>`
+            : `<span class="role">${roleLabel(item.role)}</span>`;
+          const segmentCell = canManageUser
+            ? `<select id="segment-${item.id}">
+                 <option value="B" ${item.user_segment === "B" ? "selected" : ""}>B</option>
+                 <option value="C" ${item.user_segment === "C" ? "selected" : ""}>C</option>
+               </select>`
+            : `<span class="badge">${item.user_segment}</span>`;
+          const saveButton = canManageUser
+            ? `<button class="primary" onclick="saveUser(${item.id})">保存</button>`
+            : "";
+          const freezeButton = canManageUser && item.status === "ACTIVE"
+            ? `<button class="warn" onclick="freezeUser(${item.id})">冻结</button>`
+            : "";
+          const unfreezeButton = canManageUser && item.status !== "ACTIVE"
+            ? `<button class="primary" onclick="unfreezeUser(${item.id})">取消冻结</button>`
+            : "";
+          const blacklistButton = canManageUser && !item.blacklisted
+            ? `<button class="danger" onclick="blacklistUser(${item.id})">拉黑</button>`
+            : "";
+          const removeBlacklistButton = canManageUser && item.blacklisted
+            ? `<button onclick="removeBlacklist(${item.id})">移出</button>`
+            : "";
+          const deleteButton = canManageUser
+            ? `<button class="danger" onclick="deleteUser(${item.id})">删除</button>`
+            : "";
+          return `
+            <tr>
+              <td>${item.id}</td>
+              <td>${item.username}</td>
+              <td>${item.email}</td>
+              <td>${roleCell}</td>
+              <td>${segmentCell}</td>
+              <td class="${item.status === "ACTIVE" ? "active" : ""}">${item.status}${item.ban_reason ? ` / ${item.ban_reason}` : ""}${formatBanDeadline(item)}${item.blacklisted ? " / BLACKLIST" : ""}</td>
+              <td><div class="actions">${saveButton}${freezeButton}${unfreezeButton}${blacklistButton}${removeBlacklistButton}${deleteButton}</div></td>
+            </tr>
+          `;
+        });
+
+        const tableHtml = rows.length ? `
+          <table>
+            <thead><tr>${["ID", "用户名", "邮箱", "角色", "画像", "状态", "操作"].map((header) => `<th>${header}</th>`).join("")}</tr></thead>
+            <tbody>${rows.join("")}</tbody>
+          </table>
+        ` : '<div class="empty">暂无数据</div>';
+
+        content.innerHTML = `
+          ${isSuperAdmin() ? `
+            <div class="toolbar">
+              <input id="newUsername" class="input" value="" autocomplete="off" data-lpignore="true" placeholder="用户名，例如 111">
+              <input id="newEmail" class="input" value="" autocomplete="off" data-lpignore="true" placeholder="邮箱，例如 111@qq.com">
+              <input id="newPassword" class="input" value="" type="password" autocomplete="new-password" data-lpignore="true" placeholder="密码 6-8 位">
+              <select id="newRole">
+                <option value="user">普通用户</option>
+                <option value="admin">管理员</option>
+              </select>
+              <button class="primary" onclick="createUser()">创建账号</button>
+            </div>
+          ` : ""}
+          <div class="toolbar">
+            <input id="userKeyword" class="search" value="${userState.keyword}" placeholder="按用户名或邮箱查询" onkeydown="if(event.key === 'Enter') searchUsers()">
+            <button class="primary" onclick="searchUsers()">查询</button>
+          </div>
+          ${tableHtml}
+          <div class="pager">
+            <button onclick="jumpUsersPage(${userState.page - 1})" ${userState.page <= 1 ? "disabled" : ""}>上一页</button>
+            <span>第 ${userState.page} / ${totalPages} 页</span>
+            <button onclick="jumpUsersPage(${userState.page + 1})" ${userState.page >= totalPages ? "disabled" : ""}>下一页</button>
+            <input id="pageJump" class="page-input" type="number" min="1" max="${totalPages}" placeholder="页码" onkeydown="if(event.key === 'Enter') jumpUsersPage(this.value)">
+            <button onclick="jumpUsersPage(document.querySelector('#pageJump').value)">跳转</button>
+          </div>
+        `;
+        normalizeRoleSelects();
+      } catch (error) {
+        showError(error.message);
+        content.innerHTML = "";
+      }
+    }
+
+    async function loadWords() {
+      setActiveTab("words");
+      loadStatus.textContent = "正在加载敏感词...";
+      try {
+        const items = await requestJson("/admin/sensitive-words");
+        loadStatus.textContent = `共 ${items.length} 条敏感词`;
+        const rows = items.map((item) => `
+          <tr>
+            <td>${item.id}</td>
+            <td>${item.word}</td>
+            <td>${item.reason || "-"}</td>
+            <td class="${item.active ? "active" : ""}">${item.active ? "启用" : "停用"}</td>
+            <td><button class="danger" onclick="disableWord('${item.word.replace(/'/g, "\\'")}')">删除</button></td>
+          </tr>
+        `);
+        content.innerHTML = `
+          <div class="toolbar">
+            <input id="wordInput" class="input" placeholder="敏感词">
+            <input id="wordReason" class="input" placeholder="拦截原因">
+            <button class="primary" onclick="saveWord()">保存</button>
+          </div>
+          ${rows.length ? `
+            <table>
+              <thead><tr>${["ID", "敏感词", "原因", "状态", "操作"].map((header) => `<th>${header}</th>`).join("")}</tr></thead>
+              <tbody>${rows.join("")}</tbody>
+            </table>
+          ` : '<div class="empty">暂无敏感词</div>'}
+        `;
+      } catch (error) {
+        loadStatus.textContent = error.message;
+        content.innerHTML = "";
+      }
+    }
+
+    async function loadModeration() {
+      setActiveTab("moderation");
+      loadStatus.textContent = "正在加载内容巡查...";
+      try {
+        const data = await requestJson("/admin/moderation-records?page=1&page_size=20");
+        const items = data.items || [];
+        loadStatus.textContent = `共 ${data.total || items.length} 条巡查记录`;
+        renderTable(
+          ["ID", "来源", "用户", "决策", "复核状态", "命中词", "操作"],
+          items.map((item) => `
+            <tr>
+              <td>${item.id}</td>
+              <td>${item.source}</td>
+              <td>${item.user_id}</td>
+              <td><span class="badge">${item.decision}</span></td>
+              <td>${item.review_status}</td>
+              <td>${item.matched_words || "-"}</td>
+              <td>${item.review_status !== "REVIEWED" ? `<button class="primary" onclick="reviewRecord(${item.id})">标记已审</button>` : ""}</td>
+            </tr>
+          `)
+        );
+      } catch (error) {
+        loadStatus.textContent = error.message;
+        content.innerHTML = "";
+      }
+    }
+
+    async function loadLogs() {
+      setActiveTab("logs");
+      loadStatus.textContent = "正在加载审计日志...";
+      try {
+        const data = await requestJson("/admin/action-logs?page=1&page_size=20");
+        const items = data.items || [];
+        loadStatus.textContent = `共 ${data.total || items.length} 条审计日志`;
+        renderTable(
+          ["ID", "管理员", "目标", "动作", "详情"],
+          items.map((item) => `
+            <tr>
+              <td>${item.id}</td>
+              <td>${item.admin_user_id}</td>
+              <td>${item.target_user_id || "-"}</td>
+              <td><span class="badge">${item.action}</span></td>
+              <td>${item.detail || "-"}</td>
+            </tr>
+          `)
+        );
+      } catch (error) {
+        loadStatus.textContent = error.message;
+        content.innerHTML = "";
+      }
+    }
+
+    async function loadCommunity() {
+      setActiveTab("community");
+      loadStatus.textContent = "正在加载社区投票...";
+      try {
+        const data = await requestJson("/community/admin/polls?page=1&page_size=50");
+        const items = data.items || [];
+        loadStatus.textContent = `共 ${data.total || items.length} 条社区投票`;
+        renderTable(
+          ["ID", "发布用户", "类型", "候选", "AI 分析", "状态", "操作"],
+          items.map((item) => `
+            <tr>
+              <td>${item.id}</td>
+              <td>${item.username || "-"}</td>
+              <td>${item.naming_type || "-"}</td>
+              <td>${(item.options || []).map((option) => option.name).join("、") || "-"}</td>
+              <td>${item.ai_analysis || "-"}</td>
+              <td>${item.hidden ? `已隐藏 / ${item.hidden_reason || "-"}` : "正常"}</td>
+              <td>
+                ${item.hidden
+                  ? `<button class="primary" onclick="unhideCommunityPoll(${item.id})">取消隐藏</button>`
+                  : `<button class="danger" onclick="hideCommunityPoll(${item.id})">隐藏</button>`}
+              </td>
+            </tr>
+          `)
+        );
+      } catch (error) {
+        loadStatus.textContent = error.message;
+        content.innerHTML = "";
+      }
+    }
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        if (tab.dataset.tab === "users") loadUsers();
+        if (tab.dataset.tab === "words") loadWords();
+        if (tab.dataset.tab === "moderation") loadModeration();
+        if (tab.dataset.tab === "logs") loadLogs();
+        if (tab.dataset.tab === "community") loadCommunity();
+      });
+    });
+
+    document.querySelector("#logout").addEventListener("click", () => {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "/";
+    });
+
+    renderWorkspaceActions();
+    loadUsers();
+  </script>
+</body>
+</html>

@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 智能起名</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f5f7fa; color: #172033; }
+    .page { max-width: 980px; margin: 0 auto; padding: 24px; }
+    .bar, .panel, .card { background: #fff; border-radius: 8px; padding: 18px; margin-bottom: 18px; border: 1px solid #e5e7eb; }
+    .bar { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+    .title { font-size: 22px; font-weight: 700; }
+    .subtitle, .muted { color: #667085; margin-top: 6px; }
+    .actions, .toolbar, .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .toolbar { margin-bottom: 14px; }
+    input, select, textarea { width: 100%; border: 1px solid #d8dee8; border-radius: 6px; padding: 10px 12px; font-size: 14px; }
+    textarea { min-height: 92px; resize: vertical; }
+    label { display: block; color: #475467; font-size: 14px; margin-bottom: 6px; }
+    .field { flex: 1 1 180px; margin-bottom: 12px; }
+    .upload-box { background: #e6f7ff; border: 1px solid #b7e4ff; border-radius: 8px; padding: 14px; margin-bottom: 14px; color: #007aff; }
+    .upload-box input { margin-top: 10px; background: #fff; }
+    button { border: 1px solid #d8dee8; border-radius: 6px; background: #fff; padding: 10px 16px; cursor: pointer; }
+    .primary { background: #007aff; color: #fff; border-color: #007aff; }
+    .green { background: #12b76a; color: #fff; border-color: #12b76a; }
+    .orange { background: #f79009; color: #fff; border-color: #f79009; }
+    .danger { background: #d92d20; color: #fff; border-color: #d92d20; }
+    button:disabled { opacity: .55; cursor: default; }
+    .tabs { display: flex; gap: 10px; margin-bottom: 16px; }
+    .tab { padding: 10px 14px; background: #eef2ff; color: #165dff; border-radius: 6px; cursor: pointer; }
+    .tab.active { background: #165dff; color: #fff; }
+    .name-card { border: 1px solid #edf0f3; border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+    .name-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 8px; }
+    .name { font-size: 24px; font-weight: 700; }
+    .score { color: #165dff; background: #eef2ff; border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+    .detail { color: #475467; line-height: 1.65; margin-top: 4px; }
+    .status { min-height: 22px; color: #d92d20; margin-top: 10px; }
+    .poll-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; margin-bottom: 10px; }
+    .option { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 12px; align-items: center; border-top: 1px solid #edf0f3; padding-top: 12px; margin-top: 12px; }
+    .vote-box { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+    .selected { background: #12b76a; color: #fff; border-color: #12b76a; }
+    .hidden { color: #c01048; background: #fff1f3; border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+    .hide { display: none; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="bar">
+      <div>
+        <div class="title">AI 智能起名</div>
+        <div class="subtitle" id="account">已登录</div>
+      </div>
+      <div class="actions">
+        <button class="orange" id="invitationBtn">邀请奖励</button>
+        <button class="primary" id="dashboardBtn">API 控制台</button>
+        <button class="green" id="communityBtn">社区投票</button>
+        <button id="logout">切换账号</button>
+      </div>
+    </section>
+
+    <section class="panel" id="namingPanel">
+      <div class="tabs">
+        <div class="tab active" data-category="人名">人名</div>
+        <div class="tab" data-category="企业名">企业名</div>
+        <div class="tab" data-category="宠物名">宠物名</div>
+      </div>
+
+      <div class="row">
+        <div class="field" id="surnameField">
+          <label>姓氏</label>
+          <input id="surname" placeholder="例如：张">
+        </div>
+        <div class="field" id="genderField">
+          <label>性别</label>
+          <select id="gender">
+            <option>不限</option>
+            <option>男</option>
+            <option>女</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>字数</label>
+          <select id="length">
+            <option>不限</option>
+            <option>单字</option>
+            <option>两字</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="uploadBox" class="upload-box hide">
+        <div>有企业命名规范？上传 TXT/PDF，让 AI 学习你的专属标准</div>
+        <div class="toolbar" style="margin: 10px 0 0;">
+          <input id="knowledgeFile" type="file" accept=".txt,.pdf">
+          <button class="primary" id="uploadKnowledgeBtn" type="button">上传知识库</button>
+        </div>
+      </div>
+
+      <div class="field" id="styleField">
+        <label>风格</label>
+        <input id="style" value="现代雅致" placeholder="例如：现代雅致、古风、可爱">
+      </div>
+      <div class="field hide" id="brandToneField">
+        <label>品牌调性</label>
+        <input id="brandTone" value="专业可信" placeholder="例如：专业可信、年轻活力">
+      </div>
+      <div class="field">
+        <label>核心诉求</label>
+        <textarea id="other" placeholder="可填写寓意、行业、偏好等"></textarea>
+      </div>
+
+      <div class="toolbar">
+        <button class="primary" id="generateBtn">开始智能起名</button>
+      </div>
+      <div class="status" id="status"></div>
+    </section>
+
+    <section class="panel hide" id="resultPanel">
+      <div class="poll-head">
+        <div class="title">生成结果</div>
+        <button class="green" id="publishBtn">发布到社区</button>
+      </div>
+      <div id="resultList"></div>
+    </section>
+
+    <section class="panel hide" id="communityPanel">
+      <div class="poll-head">
+        <div>
+          <div class="title">社区投票</div>
+          <div class="subtitle">每个投票帖只能投一票，可以切换选项</div>
+        </div>
+        <button id="backBtn">返回起名</button>
+      </div>
+      <div id="pollList"></div>
+    </section>
+  </main>
+
+  <script>
+    const API_BASE = window.location.origin;
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    let currentCategory = "人名";
+    let currentNames = [];
+
+    const account = document.querySelector("#account");
+    const statusBox = document.querySelector("#status");
+    const resultPanel = document.querySelector("#resultPanel");
+    const resultList = document.querySelector("#resultList");
+    const communityPanel = document.querySelector("#communityPanel");
+    const namingPanel = document.querySelector("#namingPanel");
+    const pollList = document.querySelector("#pollList");
+    let knowledgeUploaded = false;
+
+    account.textContent = `${user.email || "已登录"} · ${user.role || ""}`;
+
+    function setStatus(message) {
+      statusBox.textContent = message || "";
+    }
+
+    function authHeaders(extra = {}) {
+      return token ? { authorization: `Bearer ${token}`, ...extra } : extra;
+    }
+
+    async function requestJson(url, options = {}) {
+      const res = await fetch(`${API_BASE}${url}`, {
+        ...options,
+        headers: authHeaders(options.headers || {})
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const notFoundMessage = url.startsWith("/community/") ? "社区接口未加载，请重启后端 main.py 后再试" : "接口不存在，请确认后端已重启";
+        throw new Error(res.status === 404 ? notFoundMessage : (typeof data.detail === "string" ? data.detail : "请求失败"));
+      }
+      return data;
+    }
+
+    async function uploadKnowledgeFile(file) {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${API_BASE}/knowledge/upload`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: formData
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : "知识库上传失败");
+      }
+      return data;
+    }
+
+    function updateCategory(category) {
+      currentCategory = category;
+      document.querySelectorAll(".tab").forEach((tab) => {
+        tab.classList.toggle("active", tab.dataset.category === category);
+      });
+      document.querySelector("#surnameField").classList.toggle("hide", category !== "人名");
+      document.querySelector("#genderField").classList.toggle("hide", category !== "人名");
+      document.querySelector("#styleField").classList.toggle("hide", category === "企业名");
+      document.querySelector("#brandToneField").classList.toggle("hide", category !== "企业名");
+      document.querySelector("#uploadBox").classList.toggle("hide", category !== "企业名");
+      if (category === "人名") {
+        document.querySelector("#style").value = "现代雅致";
+        document.querySelector("#style").placeholder = "例如：现代雅致、古风、清新";
+      } else if (category === "宠物名") {
+        document.querySelector("#style").value = "活泼可爱";
+        document.querySelector("#style").placeholder = "例如：活泼可爱、软萌亲切、聪明灵动";
+      }
+      currentNames = [];
+      resultPanel.classList.add("hide");
+      setStatus("");
+    }
+
+    function buildFormData() {
+      const data = {
+        category: currentCategory,
+        surname: "",
+        gender: "不限",
+        length: document.querySelector("#length").value,
+        style: "",
+        brand_tone: "",
+        other: document.querySelector("#other").value.trim(),
+        exclude: []
+      };
+      if (currentCategory === "人名") {
+        data.surname = document.querySelector("#surname").value.trim();
+        data.gender = document.querySelector("#gender").value;
+        data.style = document.querySelector("#style").value.trim();
+      } else if (currentCategory === "企业名") {
+        data.brand_tone = document.querySelector("#brandTone").value.trim();
+      } else {
+        data.style = document.querySelector("#style").value.trim();
+      }
+      return data;
+    }
+
+    function renderNames(names) {
+      resultList.innerHTML = names.map((item) => `
+        <div class="name-card">
+          <div class="name-head">
+            <div class="name">${item.name}</div>
+            <div class="score">${item.score || 0} 分</div>
+          </div>
+          <div class="detail">出处：${item.reference || "-"}</div>
+          <div class="detail">寓意：${item.moral || "-"}</div>
+          <div class="detail">风格：${item.style_reason || "-"}</div>
+        </div>
+      `).join("");
+      resultPanel.classList.remove("hide");
+    }
+
+    async function generateNames() {
+      const data = buildFormData();
+      if (data.category === "人名" && !data.surname) {
+        setStatus("请先填写姓氏");
+        return;
+      }
+      if (data.category !== "企业名" && !data.style) {
+        setStatus("请先填写风格");
+        return;
+      }
+      if (data.category === "企业名" && !data.brand_tone) {
+        setStatus("请先填写品牌调性");
+        return;
+      }
+
+      const btn = document.querySelector("#generateBtn");
+      btn.disabled = true;
+      btn.textContent = "AI 思考中...";
+      setStatus("");
+      try {
+        const res = await requestJson("/name/generate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(data)
+        });
+        currentNames = res.names || [];
+        renderNames(currentNames);
+      } catch (error) {
+        setStatus(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "开始智能起名";
+      }
+    }
+
+    async function handleKnowledgeUpload() {
+      const fileInput = document.querySelector("#knowledgeFile");
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        setStatus("请先选择 TXT 或 PDF 文件");
+        return;
+      }
+      const btn = document.querySelector("#uploadKnowledgeBtn");
+      btn.disabled = true;
+      btn.textContent = "上传中...";
+      setStatus("正在上传知识库，上传完成后可直接起名，不会重复上传。");
+      try {
+        await uploadKnowledgeFile(file);
+        knowledgeUploaded = true;
+        setStatus("知识库上传完成，现在可以开始智能起名。");
+      } catch (error) {
+        setStatus(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = knowledgeUploaded ? "重新上传" : "上传知识库";
+      }
+    }
+
+    async function publishToCommunity() {
+      if (!currentNames.length) {
+        setStatus("暂无可发布的起名结果");
+        return;
+      }
+      const btn = document.querySelector("#publishBtn");
+      btn.disabled = true;
+      try {
+        await requestJson("/community/polls", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            naming_type: currentCategory,
+            candidate_names: currentNames,
+            ai_analysis: document.querySelector("#other").value.trim() || "AI 已根据当前条件生成候选方案，请大家投票选择。"
+          })
+        });
+        setStatus("已发布到社区");
+        await showCommunity();
+      } catch (error) {
+        setStatus(error.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function formatTime(value) {
+      return value ? String(value).replace("T", " ").slice(0, 16) : "-";
+    }
+
+    async function showCommunity() {
+      namingPanel.classList.add("hide");
+      resultPanel.classList.add("hide");
+      communityPanel.classList.remove("hide");
+      pollList.innerHTML = "<div class='muted'>正在加载社区投票...</div>";
+      try {
+        const res = await requestJson("/community/polls?page=1&page_size=50");
+        const items = res.items || [];
+        if (!items.length) {
+          pollList.innerHTML = "<div class='muted'>暂无社区投票</div>";
+          return;
+        }
+        pollList.innerHTML = items.map((poll) => `
+          <div class="card">
+            <div class="poll-head">
+              <div>
+                <div class="title">用户 ${poll.username} 发布的起名投票</div>
+                <div class="subtitle">${poll.naming_type} · ${formatTime(poll.created_at)}</div>
+              </div>
+              ${poll.hidden ? "<span class='hidden'>已隐藏</span>" : ""}
+            </div>
+            ${poll.hidden_reason ? `<div class="detail">隐藏理由：${poll.hidden_reason}</div>` : ""}
+            ${poll.ai_analysis ? `<div class="detail">AI 分析：${poll.ai_analysis}</div>` : ""}
+            ${(poll.options || []).map((option) => `
+              <div class="option">
+                <div>
+                  <div class="name-head">
+                    <div class="name">${option.name}</div>
+                    <div class="score">${option.score || 0} 分</div>
+                  </div>
+                  <div class="detail">寓意：${option.moral || "-"}</div>
+                  <div class="detail">风格：${option.style_reason || "-"}</div>
+                </div>
+                <div class="vote-box">
+                  <div class="muted">${option.votes_count || 0} 票</div>
+                  <button class="${poll.my_vote_option_id === option.id ? "selected" : "primary"}" onclick="votePoll(${poll.id}, ${option.id})">
+                    ${poll.my_vote_option_id === option.id ? "已投" : "投票"}
+                  </button>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `).join("");
+      } catch (error) {
+        pollList.innerHTML = `<div class="status">${error.message}</div>`;
+      }
+    }
+
+    async function votePoll(pollId, optionId) {
+      await requestJson(`/community/polls/${pollId}/vote`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ option_id: optionId })
+      });
+      await showCommunity();
+    }
+
+    window.votePoll = votePoll;
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => updateCategory(tab.dataset.category));
+    });
+    document.querySelector("#generateBtn").addEventListener("click", generateNames);
+    document.querySelector("#uploadKnowledgeBtn").addEventListener("click", handleKnowledgeUpload);
+    document.querySelector("#publishBtn").addEventListener("click", publishToCommunity);
+    document.querySelector("#dashboardBtn").addEventListener("click", () => {
+      window.location.href = "/static/dashboard-preview.html";
+    });
+    document.querySelector("#invitationBtn").addEventListener("click", () => {
+      window.location.href = "/static/invitation-preview.html";
+    });
+    document.querySelector("#communityBtn").addEventListener("click", showCommunity);
+    document.querySelector("#backBtn").addEventListener("click", () => {
+      communityPanel.classList.add("hide");
+      namingPanel.classList.remove("hide");
+      if (currentNames.length) resultPanel.classList.remove("hide");
+    });
+    document.querySelector("#logout").addEventListener("click", () => {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "/";
+    });
+
+    updateCategory("人名");
+  </script>
+</body>
+</html>

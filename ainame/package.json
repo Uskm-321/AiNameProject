@@ -1,0 +1,19 @@
+{
+  "scripts": {
+    "dev:h5": "uni -p h5 --host 127.0.0.1 --port 5173"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "latest",
+    "@dcloudio/uni-components": "latest",
+    "@dcloudio/uni-h5": "latest",
+    "semver": "^7.8.5",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "@dcloudio/uni-cli-i18n": "^2.0.2-5000720260410001",
+    "@dcloudio/uni-cli-shared": "^2.0.2-5000720260410001",
+    "@dcloudio/vite-plugin-uni": "latest",
+    "vite": "latest",
+    "webpack": "^5.108.0"
+  }
+}

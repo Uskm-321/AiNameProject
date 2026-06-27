@@ -15,6 +15,7 @@ from core.auth import AuthHandler
 from core.redisconfig import get_redis_client
 from dependencies import get_mail, get_session
 from repository.user_repo import UserRepository
+from repository.invitation_repo import InvitationRepository
 from schemas import ResponseOut
 from schemas.user_schemas import LoginIn, LoginOut, RegisterIn, UserCreateSchema
 from models.user import User, UserStatus
@@ -71,8 +72,11 @@ async def register(
             password=str(userinfo.password),
             username=str(userinfo.username),
         )
-        await user_repository.create(user_schema)
+        invitation_repository = InvitationRepository(session=session)
+        await invitation_repository.create_user(user_schema, userinfo.invite_code)
         await redis_client.delete(userinfo.email)
+    except ValueError as e:
+        raise HTTPException(400, detail=str(e))
     except Exception as e:
         raise HTTPException(500, detail=str(e))
     return ResponseOut()
@@ -86,6 +90,7 @@ async def login(data: LoginIn, session: AsyncSession = Depends(get_session)):
         raise HTTPException(status_code=400, detail="该用户不存在")
     if not user.check_password(data.password):
         raise HTTPException(status_code=400, detail="邮箱或密码错误")
+    user = await user_repository.clear_expired_ban(user)
     if user.status == UserStatus.BANNED.value and (not user.banned_until or user.banned_until > datetime.now()):
         raise HTTPException(status_code=403, detail="用户已封禁")
     if user.blacklisted:

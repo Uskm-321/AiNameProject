@@ -6,13 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 ModerationDecisionLiteral = Literal["PASS", "BLOCK"]
 ReviewStatusLiteral = Literal["AUTO_PASS", "AUTO_BLOCK", "PENDING", "REVIEWED"]
-SensitiveWordSeverityLiteral = Literal["BLOCK", "WARN"]
 
 
 class SensitiveWordIn(BaseModel):
     word: Annotated[str, Field(..., min_length=1, max_length=128)]
     reason: str | None = Field(default=None, max_length=255)
-    severity: SensitiveWordSeverityLiteral = "BLOCK"
 
 
 class SensitiveWordOut(SensitiveWordIn):

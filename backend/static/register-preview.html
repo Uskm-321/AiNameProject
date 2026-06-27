@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta http-equiv="Cache-Control" content="no-store"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>账号注册</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;background:#f5f7fa;color:#172033}
+    .page{width:min(500px,calc(100% - 32px));margin:40px auto}.card{padding:26px;background:#fff;border:1px solid #e5e7eb;border-radius:8px}
+    h1{font-size:24px;margin:0 0 22px}.field{margin-bottom:14px}label{display:block;margin-bottom:6px;color:#475467;font-size:14px}
+    input{width:100%;padding:11px 12px;border:1px solid #d0d5dd;border-radius:6px;font-size:14px}.code-row{display:grid;grid-template-columns:1fr 120px;gap:10px}
+    button{padding:10px 14px;border:1px solid #d0d5dd;border-radius:6px;background:#fff;cursor:pointer}.primary{width:100%;margin-top:8px;color:#fff;background:#2563eb;border-color:#2563eb}
+    .invite{padding:10px;color:#b54708;background:#fffaeb;border-radius:6px}.status{min-height:22px;margin-top:12px;color:#d92d20;font-size:14px}.link{text-align:center;margin-top:16px;color:#175cd3;cursor:pointer}
+  </style>
+</head>
+<body>
+  <main class="page"><section class="card">
+    <h1>账号注册</h1>
+    <div class="field"><label>用户名</label><input id="username" maxlength="8" placeholder="4-8 个字符"></div>
+    <div class="field"><label>邮箱</label><input id="email" type="email" placeholder="name@example.com"></div>
+    <div class="field"><label>验证码</label><div class="code-row"><input id="code" maxlength="4" placeholder="4 位验证码"><button id="codeBtn">获取验证码</button></div></div>
+    <div class="field"><label>密码</label><input id="password" type="password" maxlength="8" placeholder="6-8 位"></div>
+    <div class="field"><label>确认密码</label><input id="confirmPassword" type="password" maxlength="8"></div>
+    <div class="field"><label>邀请码（选填）</label><input id="inviteCode" placeholder="邀请链接会自动填写"></div>
+    <div class="invite" id="inviteTip" style="display:none">通过好友邀请注册，成功后获得 5 credits</div>
+    <button class="primary" id="registerBtn">立即注册</button>
+    <div class="status" id="status"></div><div class="link" onclick="location.href='/'">已有账号？去登录</div>
+  </section></main>
+  <script>
+    const byId=id=>document.getElementById(id), inviteCode=new URLSearchParams(location.search).get("invite_code")||"";
+    byId("inviteCode").value=inviteCode;byId("inviteTip").style.display=inviteCode?"block":"none";
+    async function request(url,options={}){const response=await fetch(url,{...options,headers:{...(options.body?{"content-type":"application/json"}:{})}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(typeof data.detail==="string"?data.detail:"请求失败");return data}
+    byId("codeBtn").onclick=async()=>{const email=byId("email").value.trim();if(!email)return byId("status").textContent="请输入邮箱";try{await request(`/auth/code?email=${encodeURIComponent(email)}`);byId("status").style.color="#067647";byId("status").textContent="验证码已发送";}catch(error){byId("status").textContent=error.message}};
+    byId("registerBtn").onclick=async()=>{const data={username:byId("username").value.trim(),email:byId("email").value.trim(),code:byId("code").value.trim(),password:byId("password").value,confirm_password:byId("confirmPassword").value,invite_code:byId("inviteCode").value.trim()||null};try{await request("/auth/register",{method:"POST",body:JSON.stringify(data)});alert("注册成功");location.href="/";}catch(error){byId("status").style.color="#d92d20";byId("status").textContent=error.message}};
+  </script>
+</body>
+</html>

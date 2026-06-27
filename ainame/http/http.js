@@ -1,8 +1,8 @@
 const getBaseUrl = () => {
   if (typeof window !== "undefined" && window.location && window.location.hostname) {
-    return `http://${window.location.hostname}:8000`;
+    return `http://${window.location.hostname}:9000`;
   }
-  return "http://127.0.0.1:8000";
+  return "http://127.0.0.1:9000";
 };
 
 const BASE_URL = getBaseUrl();
@@ -91,11 +91,23 @@ export default {
   getEmailCode: (email) => request("/auth/code?email=" + encodeURIComponent(email), { method: "GET", auth: false }),
   register: (data) => request("/auth/register", { method: "POST", data, auth: false }),
   login: (data) => request("/auth/login", { method: "POST", data, auth: false }),
+  getInvitationSummary: () => request("/invitation/me", { method: "GET" }),
   generateName: (data) => request("/name/generate", { method: "POST", data }),
   feedbackName: (data) => request("/name/feedback", { method: "POST", data }),
   uploadKnowledge: (filePath) => uploadFile("/knowledge/upload", filePath),
 
+  createApiKey: (name) => request("/api-key/create", { method: "POST", data: { name } }),
+  getApiKeys: () => request("/api-key/list", { method: "GET" }),
+  disableApiKey: (keyId) => request("/api-key/disable", { method: "POST", data: { key_id: keyId } }),
+  enableApiKey: (keyId) => request("/api-key/enable", { method: "POST", data: { key_id: keyId } }),
+  deleteApiKey: (keyId) => request("/api-key/delete", { method: "POST", data: { key_id: keyId } }),
+  getApiKeyStats: () => request("/api-key/stats", { method: "GET" }),
+  getApiKeyUsage: (params) => request("/api-key/usage" + buildQuery(params), { method: "GET" }),
+
   getAdminUsers: (params) => request("/admin/users" + buildQuery(params), { method: "GET" }),
+  getAdminUsersOverview: () => request("/admin/users/overview", { method: "GET" }),
+  getAdminUserDetail: (userId) => request(`/admin/users/${userId}/detail`, { method: "GET" }),
+  createAdminUser: (data) => request("/admin/users", { method: "POST", data }),
   updateAdminUserRole: (userId, role) => request(`/admin/users/${userId}/role`, { method: "PATCH", data: { role } }),
   updateAdminUserSegment: (userId, user_segment) => request(`/admin/users/${userId}/segment`, { method: "PATCH", data: { user_segment } }),
   banAdminUser: (userId, data) => request(`/admin/users/${userId}/ban`, { method: "POST", data }),
@@ -107,5 +119,11 @@ export default {
   disableSensitiveWord: (word) => request(`/admin/sensitive-words/${encodeURIComponent(word)}`, { method: "DELETE" }),
   getModerationRecords: (params) => request("/admin/moderation-records" + buildQuery(params), { method: "GET" }),
   reviewModerationRecord: (recordId, note) => request(`/admin/moderation-records/${recordId}/review`, { method: "POST", data: { note } }),
-  getAdminActionLogs: (params) => request("/admin/action-logs" + buildQuery(params), { method: "GET" })
+  getAdminActionLogs: (params) => request("/admin/action-logs" + buildQuery(params), { method: "GET" }),
+  createCommunityPoll: (data) => request("/community/polls", { method: "POST", data }),
+  getCommunityPolls: (params) => request("/community/polls" + buildQuery(params), { method: "GET" }),
+  voteCommunityPoll: (pollId, optionId) => request(`/community/polls/${pollId}/vote`, { method: "POST", data: { option_id: optionId } }),
+  getAdminCommunityPolls: (params) => request("/community/admin/polls" + buildQuery(params), { method: "GET" }),
+  hideCommunityPoll: (pollId, reason) => request(`/community/admin/polls/${pollId}/hide`, { method: "POST", data: { reason } }),
+  unhideCommunityPoll: (pollId) => request(`/community/admin/polls/${pollId}/unhide`, { method: "POST" })
 };

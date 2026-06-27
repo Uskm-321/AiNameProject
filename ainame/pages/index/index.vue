@@ -6,7 +6,10 @@
         <view class="account-subtitle">{{ currentUser.email || '未登录' }}</view>
       </view>
       <view class="account-actions">
-        <button v-if="currentUser.role === 'ADMIN'" class="admin-btn" size="mini" @click="goAdmin">管理后台</button>
+        <button class="invite-btn" size="mini" @click="goInvitation">邀请奖励</button>
+        <button class="dashboard-btn" size="mini" @click="goDashboard">API 控制台</button>
+        <button v-if="isAdminRole(currentUser.role)" class="admin-btn" size="mini" @click="goAdmin">管理后台</button>
+        <button class="community-btn" size="mini" @click="goCommunity">社区投票</button>
         <button class="logout-btn" size="mini" @click="switchAccount">切换账号</button>
       </view>
     </view>
@@ -41,7 +44,10 @@
     <button class="btn-primary" :loading="loading" @click="handleGenerate">开始智能起名</button>
 
     <view class="result-box" v-if="names.length > 0">
-      <view class="result-title">为您生成的专属方案：</view>
+      <view class="result-head">
+        <view class="result-title">为您生成的专属方案：</view>
+        <button class="publish-btn" size="mini" :loading="publishing" @click="publishToCommunity">发布到社区</button>
+      </view>
       <view class="name-card" v-for="(item, index) in names" :key="index">
         <view class="name-header">
           <text class="name-text">{{ item.name }}</text>
@@ -80,10 +86,13 @@ const formData = ref({
 });
 
 const loading = ref(false);
+const publishing = ref(false);
 const names = ref([]);
 const threadId = ref(''); // 核心：保存上下文记忆的ID
 const feedbackText = ref('');
 const currentUser = ref(uni.getStorageSync('user') || {});
+const adminRoles = ['admin', 'super_admin', 'ADMIN', 'SUPER_ADMIN'];
+const isAdminRole = (role) => adminRoles.includes(role);
 
 // --- 方法定义 ---
 const switchCategory = (cat) => {
@@ -94,6 +103,18 @@ const switchCategory = (cat) => {
 
 const goAdmin = () => {
   uni.navigateTo({ url: '/pages/admin/admin' });
+};
+
+const goDashboard = () => {
+  uni.navigateTo({ url: '/pages/dashboard/index' });
+};
+
+const goInvitation = () => {
+  uni.navigateTo({ url: '/pages/invitation/index' });
+};
+
+const goCommunity = () => {
+  uni.navigateTo({ url: '/pages/community/community' });
 };
 
 const switchAccount = () => {
@@ -186,6 +207,26 @@ const handleFeedback = async () => {
     uni.hideLoading();
   }
 };
+
+const publishToCommunity = async () => {
+  if (!names.value.length) {
+    return uni.showToast({ title: '暂无可发布的起名结果', icon: 'none' });
+  }
+  publishing.value = true;
+  try {
+    await http.createCommunityPoll({
+      naming_type: formData.value.category,
+      candidate_names: names.value,
+      ai_analysis: formData.value.other || 'AI 已根据当前起名条件生成候选方案，请大家投票选择。'
+    });
+    uni.showToast({ title: '已发布到社区', icon: 'success' });
+    setTimeout(() => uni.navigateTo({ url: '/pages/community/community' }), 500);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    publishing.value = false;
+  }
+};
 </script>
 
 <style scoped>
@@ -194,7 +235,10 @@ const handleFeedback = async () => {
 .account-title { font-size: 34rpx; font-weight: bold; color: #111827; }
 .account-subtitle { margin-top: 6rpx; font-size: 24rpx; color: #667085; }
 .account-actions { display: flex; gap: 12rpx; align-items: center; }
+.invite-btn { background: #f79009; color: #fff; border-radius: 10rpx; }
+.dashboard-btn { background: #344054; color: #fff; border-radius: 10rpx; }
 .admin-btn { background: #165dff; color: #fff; border-radius: 10rpx; }
+.community-btn { background: #12b76a; color: #fff; border-radius: 10rpx; }
 .logout-btn { background: #fff; color: #344054; border: 1px solid #d0d5dd; border-radius: 10rpx; }
 /* Tabs 样式 */
 .tabs { display: flex; justify-content: space-around; background: #fff; padding: 20rpx; border-radius: 16rpx; margin-bottom: 30rpx; }
@@ -216,7 +260,9 @@ const handleFeedback = async () => {
 
 /* 结果卡片 */
 .result-box { margin-top: 40rpx; }
-.result-title { font-size: 32rpx; font-weight: bold; margin-bottom: 20rpx; }
+.result-head { display: flex; justify-content: space-between; align-items: center; gap: 16rpx; margin-bottom: 20rpx; }
+.result-title { font-size: 32rpx; font-weight: bold; }
+.publish-btn { background: #12b76a; color: #fff; border-radius: 10rpx; }
 .name-card { background: #fff; padding: 30rpx; border-radius: 16rpx; margin-bottom: 24rpx; box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.05); }
 .name-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16rpx; }
 .name-text { font-size: 40rpx; font-weight: bold; color: #333; }

@@ -15,7 +15,9 @@
     
     <input class="input-box" v-model="form.password" type="password" placeholder="请输入密码 (至少6位)" />
     <input class="input-box" v-model="form.confirm_password" type="password" placeholder="请再次确认密码" />
-    
+    <input class="input-box" v-model="form.invite_code" placeholder="邀请码（选填）" />
+    <view v-if="form.invite_code" class="invite-tip">通过好友邀请注册，成功后获得 5 credits</view>
+
     <button class="btn-primary" :loading="loading" @click="handleRegister">立即注册</button>
     <view class="link" @click="goLogin">已有账号？去登录</view>
   </view>
@@ -23,6 +25,7 @@
 
 <script setup>
 import { ref } from 'vue';
+import { onLoad } from '@dcloudio/uni-app';
 import http from '@/http/http.js';
 
 // 表单数据绑定 (字段名严格对应后端 RegisterIn 的 Schema)
@@ -31,7 +34,8 @@ const form = ref({
   email: '',
   code: '',
   password: '',
-  confirm_password: ''
+  confirm_password: '',
+  invite_code: ''
 });
 
 const loading = ref(false);
@@ -74,9 +78,11 @@ const sendCode = async () => {
 const handleRegister = async () => {
   // 1. 前端基础拦截校验 (与后端 Pydantic 规则保持一致)
   if (form.value.username.length < 4) return uni.showToast({ title: '用户名至少4位', icon: 'none' });
+  if (form.value.username.length > 20) return uni.showToast({ title: '用户名最多20位', icon: 'none' });
   if (!form.value.email.trim()) return uni.showToast({ title: '请输入邮箱', icon: 'none' });
   if (form.value.code.length !== 4) return uni.showToast({ title: '请输入4位验证码', icon: 'none' });
   if (form.value.password.length < 6) return uni.showToast({ title: '密码至少6位', icon: 'none' });
+  if (form.value.password.length > 32) return uni.showToast({ title: '密码最多32位', icon: 'none' });
   if (form.value.password !== form.value.confirm_password) return uni.showToast({ title: '两次密码输入不一致', icon: 'none' });
 
   loading.value = true;
@@ -104,6 +110,12 @@ const handleRegister = async () => {
 const goLogin = () => {
   uni.redirectTo({ url: '/pages/login/login' });
 };
+
+onLoad((options) => {
+  if (options && options.invite_code) {
+    form.value.invite_code = String(options.invite_code);
+  }
+});
 </script>
 
 <style scoped>
@@ -112,6 +124,7 @@ const goLogin = () => {
 
 /* 基础输入框 */
 .input-box { border-bottom: 1px solid #eee; padding: 24rpx 10rpx; margin-bottom: 30rpx; font-size: 28rpx;}
+.invite-tip { margin: -10rpx 0 24rpx; padding: 18rpx 20rpx; border-radius: 8rpx; background: #fffaeb; color: #b54708; font-size: 24rpx; }
 
 /* 验证码同行布局 */
 .code-group { display: flex; align-items: center; justify-content: space-between; margin-bottom: 30rpx;}

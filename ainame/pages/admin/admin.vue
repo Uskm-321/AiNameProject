@@ -106,6 +106,7 @@
           <view class="actions">
             <text :class="['status', word.active ? 'ok' : 'blocked']">{{ word.active ? '启用' : '停用' }}</text>
             <button v-if="word.active" class="danger-btn mini" size="mini" @click="disableWord(word)">停用</button>
+            <button v-else class="danger-btn mini" size="mini" @click="deleteWord(word)">删除</button>
           </view>
         </view>
       </view>
@@ -291,6 +292,19 @@ const saveWord = async () => {
 const disableWord = async (word) => {
   await http.disableSensitiveWord(word.word);
   await loadSensitiveWords();
+};
+
+const deleteWord = (word) => {
+  uni.showModal({
+    title: '删除敏感词',
+    content: `确认彻底删除“${word.word}”吗？删除后不会再占用列表位置。`,
+    success: async (res) => {
+      if (!res.confirm) return;
+      await http.deleteSensitiveWord(word.word);
+      uni.showToast({ title: '已删除', icon: 'success' });
+      await loadSensitiveWords();
+    }
+  });
 };
 
 const reviewRecord = async (item) => {

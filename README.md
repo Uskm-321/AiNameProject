@@ -14,6 +14,22 @@ AiNameProject/
 
 Run backend commands from the `backend/` directory so the current import paths work correctly.
 
+Local services/configuration required by the current backend:
+
+- MySQL database named `ainame`, matching `backend/settings/__init__.py`.
+- Redis on `127.0.0.1:6379`, used by login/verification flows.
+- Mail SMTP settings in `backend/settings/__init__.py`, used by verification email.
+- The configured LLM/RAG services used by `backend/core/workflow.py` and `backend/core/rag_service.py`.
+
+Install backend dependencies in your Python environment:
+
+```powershell
+cd backend
+python -m pip install -r requirements.txt
+```
+
+PDF knowledge-base uploads require `pypdf`. If PDF upload reports that `pypdf` is missing, install or update dependencies with the command above.
+
 ```powershell
 cd backend
 uvicorn main:app --reload
@@ -67,10 +83,11 @@ Our side:
 - Module 1: naming core form/schema/prompt/result updates.
 - Module 2: `.com` domain checks for generated names.
 - Module 3: enterprise-only slogan and logo placeholder flow.
-- Admin cleanup for user bans, roles, sensitive words, and logs.
+- RAG upload/retrieval stability fixes.
 
 Teammate side:
 
+- Admin module.
 - Community voting.
 - API Key page and generation API.
 - Invitation credits.

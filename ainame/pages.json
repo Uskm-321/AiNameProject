@@ -15,6 +15,18 @@
     {
       "path": "pages/admin/admin",
       "style": { "navigationBarTitleText": "管理员工作台" }
+    },
+    {
+      "path": "pages/community/community",
+      "style": { "navigationBarTitleText": "社区投票" }
+    },
+    {
+      "path": "pages/dashboard/index",
+      "style": { "navigationBarTitleText": "API 仪表盘" }
+    },
+    {
+      "path": "pages/invitation/index",
+      "style": { "navigationBarTitleText": "邀请奖励" }
     }
   ],
   "globalStyle": {

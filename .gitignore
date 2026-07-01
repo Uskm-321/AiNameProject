@@ -3,5 +3,12 @@ __pycache__/
 .idea/
 *.log
 uploads/
+dashscope
+dashscope.txt
 ainame/unpackage/
 backend/chroma_rag_db/
+backend/.env
+backend/secrets/
+backend/dashscope
+backend/dashscope.txt
+backend/settings/dashscope.txt

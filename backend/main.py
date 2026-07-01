@@ -11,7 +11,11 @@ from dependencies import get_mail
 # 1. 导入路由
 from routers.auth_router import router as auth_router
 from routers.admin_router import router as admin_router
+from routers.api_key_router import router as api_key_router
+from routers.community_router import router as community_router
+from routers.invitation_router import router as invitation_router
 from routers.name_router import router as name_router
+from routers.payment_router import router as payment_router
 from routers.rag_router import router as rag_router
 from routers.visual_router import router as visual_router
 
@@ -32,11 +36,18 @@ app.add_middleware(
 # 4. 注册路由
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(api_key_router)
+app.include_router(community_router)
+app.include_router(invitation_router)
 app.include_router(name_router)
+app.include_router(payment_router)
 app.include_router(rag_router)
 app.include_router(visual_router)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+UPLOADS_DIR = Path(__file__).resolve().parent / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 
 # 5. 启动事件：在这里安全地初始化数据库连接池和工作流

@@ -16,3 +16,4 @@ langchain-chroma
 pydantic
 pypdf
 pypinyin
+qrcode[pil]

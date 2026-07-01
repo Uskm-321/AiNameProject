@@ -1,12 +1,15 @@
 import json
 import re
+from pathlib import Path
 from typing import Any
 
+from core.image_provider import DashScopeImageProvider
 from core.workflow import llm
 from schemas.visual import VisualGenerateIn, VisualGenerateOut
 
 
 PLACEHOLDER_LOGO_URL = "/static/logo-placeholder.svg"
+VISUAL_UPLOAD_DIR = Path(__file__).resolve().parents[1] / "uploads" / "visuals"
 
 
 def _extract_json_object(text: str) -> dict | None:
@@ -47,6 +50,26 @@ def _fallback_visual(data: VisualGenerateIn) -> VisualGenerateOut:
     )
 
 
+def _logo_prompt(data: VisualGenerateIn, prompt: str) -> str:
+    tone = data.brand_tone or "clean professional"
+    return (
+        f"{prompt}. Create a clean abstract brand symbol for a Chinese enterprise named {data.name}. "
+        f"Brand tone: {tone}. No readable text, no letters, no mockup, no business card. "
+        "Minimal vector logo mark, simple geometric composition, balanced spacing, white background."
+    )
+
+
+async def _build_logo_images(data: VisualGenerateIn, logo_prompt: str) -> list[dict[str, str]]:
+    prompt = _logo_prompt(data, logo_prompt)
+    provider = DashScopeImageProvider()
+    try:
+        image_url = await provider.generate_logo(prompt, VISUAL_UPLOAD_DIR)
+        return [{"url": image_url, "prompt": prompt}]
+    except Exception as e:
+        print(f"企业 Logo 图片生成失败，使用占位图: {e}")
+        return [{"url": PLACEHOLDER_LOGO_URL, "prompt": prompt}]
+
+
 async def generate_enterprise_visual(data: VisualGenerateIn) -> VisualGenerateOut:
     prompt = f"""
 你是一位品牌视觉顾问。请只为企业名生成品牌视觉冷启动方案。
@@ -70,17 +93,20 @@ async def generate_enterprise_visual(data: VisualGenerateIn) -> VisualGenerateOu
         response = await llm.ainvoke(prompt)
         parsed = _extract_json_object(str(getattr(response, "content", response)))
         if not parsed:
+            fallback.logo_images = await _build_logo_images(data, fallback.logo_images[0].prompt)
             return fallback
 
         logo_prompt = str(parsed.get("logo_prompt") or fallback.logo_images[0].prompt).strip()
+        logo_images = await _build_logo_images(data, logo_prompt)
         return VisualGenerateOut(
             name=data.name,
             slogans=_list(parsed.get("slogans"), fallback.slogans, limit=3),
             visual_keywords=_list(parsed.get("visual_keywords"), fallback.visual_keywords, limit=6),
             color_palette=_list(parsed.get("color_palette"), fallback.color_palette, limit=5),
-            logo_images=[{"url": PLACEHOLDER_LOGO_URL, "prompt": logo_prompt}],
+            logo_images=logo_images,
             design_note=str(parsed.get("design_note") or fallback.design_note).strip(),
         )
     except Exception as e:
         print(f"企业视觉生成失败，使用占位结果: {e}")
+        fallback.logo_images = await _build_logo_images(data, fallback.logo_images[0].prompt)
         return fallback

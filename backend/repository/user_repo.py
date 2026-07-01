@@ -158,6 +158,11 @@ class UserRepository:
             user.banned_until = None
             return user
 
+    async def clear_expired_ban(self, user: User):
+        if user.status != UserStatus.BANNED.value or not user.banned_until or user.banned_until > datetime.now():
+            return user
+        return await self.unset_ban(user.id)
+
     async def add_blacklist(self, user_id: int, reason: str | None = None):
         async with self.session.begin():
             user = await self.session.scalar(select(User).where(User.id == user_id))
@@ -235,6 +240,14 @@ class AdminRepository:
             if not rule:
                 return None
             rule.active = False
+            return rule
+
+    async def delete_sensitive_word(self, word: str):
+        async with self.session.begin():
+            rule = await self.session.scalar(select(SensitiveWordRule).where(SensitiveWordRule.word == word))
+            if not rule:
+                return None
+            await self.session.delete(rule)
             return rule
 
     async def list_sensitive_words(self):

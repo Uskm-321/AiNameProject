@@ -16,5 +16,10 @@ MAIL_SSL_TLS=False
 from datetime import timedelta
 JWT_SECRET_KEY = "wrwetsgsdfrtuighj" # 自定义
 
+INVITE_REGISTER_LINK_TEMPLATE = ""
 JWT_ACCESS_TOKEN_EXPIRES=timedelta(days=1)
 JWT_REFRESH_TOKEN_EXPIRES=timedelta(days=30)
+
+ALIPAY_GATEWAY = "https://openapi-sandbox.dl.alipaydev.com/gateway.do"
+ALIPAY_CONFIG_FILE = r"C:\Users\854068660\Desktop\alipay.txt"
+ALIPAY_RETURN_URL = "http://localhost:5173/#/pages/dashboard/index"

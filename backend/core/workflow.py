@@ -259,8 +259,34 @@ async def pet_naming_node(state: WorkflowState) -> Dict[str, Any]:
         return {"final_output": _fallback_names("宠物名", f"发生未预期的错误: {str(e)}")}
 
 
-def route_by_category(state: WorkflowState) -> Literal["human", "company", "pet"]:
-    category_map = {"人名": "human", "企业名": "company", "宠物名": "pet"}
+async def creative_naming_node(state: WorkflowState) -> Dict[str, Any]:
+    category = state.get("category", "NPC")
+    expert_by_category = {
+        "NPC": "游戏世界观与 NPC 角色设计专家",
+        "小说角色": "小说人物塑造与文学命名专家",
+        "地名": "世界观地理设定与地名创作专家",
+    }
+    prompt = f"""你是一位{expert_by_category.get(category, '创意命名专家')}。
+请为用户生成 5 个高质量的{category}名称。
+【字数限制】: {state.get('length') or '不限'}
+【风格】: {state.get('style') or '不限'}
+【主题与补充要求】: {state.get('other') or '无'}
+【排除名称或用字】: {'、'.join(state.get('exclude') or []) or '无'}
+名称应当符合类型语境、便于记忆，并体现清晰的设定感。
+每个方案必须包含 name、reference、moral、style_reason、score。"""
+    result = await _generate_names_with_fallback(prompt, category=category)
+    return {"final_output": result}
+
+
+def route_by_category(state: WorkflowState) -> Literal["human", "company", "pet", "creative"]:
+    category_map = {
+        "人名": "human",
+        "企业名": "company",
+        "宠物名": "pet",
+        "NPC": "creative",
+        "小说角色": "creative",
+        "地名": "creative",
+    }
     return category_map.get(state.get("category", "人名"), "human")
 
 
@@ -271,16 +297,18 @@ def build_workflow():
     workflow.add_node("human", human_naming_node)
     workflow.add_node("pet", pet_naming_node)
     workflow.add_node("company", company_naming_node)
+    workflow.add_node("creative", creative_naming_node)
 
     workflow.set_entry_point("supervisor")
     workflow.add_conditional_edges(
         "supervisor",
         route_by_category,
-        {"human": "human", "company": "company", "pet": "pet"}
+        {"human": "human", "company": "company", "pet": "pet", "creative": "creative"}
     )
     workflow.add_edge("human", END)
     workflow.add_edge("pet", END)
     workflow.add_edge("company", END)
+    workflow.add_edge("creative", END)
 
     return workflow
 

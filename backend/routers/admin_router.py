@@ -242,6 +242,24 @@ async def disable_sensitive_word(
     return ResponseOut()
 
 
+@router.delete("/sensitive-words/{word}/remove", response_model=ResponseOut)
+async def delete_sensitive_word(
+    word: str,
+    current_admin: User = Depends(auth_handler.auth_admin_dependency),
+    session: AsyncSession = Depends(get_session),
+):
+    repository = AdminRepository(session=session)
+    rule = await repository.delete_sensitive_word(word)
+    if not rule:
+        raise HTTPException(status_code=404, detail="敏感词不存在")
+    await repository.create_action_log(
+        current_admin.id,
+        AdminActionType.SENSITIVE_WORD_DELETE.value,
+        detail=f"word={word}",
+    )
+    return ResponseOut()
+
+
 @router.get("/moderation-records", response_model=ModerationRecordListOut)
 async def list_moderation_records(
     page: int = Query(1, ge=1),

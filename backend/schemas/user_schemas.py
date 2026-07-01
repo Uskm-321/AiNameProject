@@ -4,8 +4,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
-RawPasswordStr = Annotated[str, Field(..., min_length=6, max_length=8)]
-UserNameStr = Annotated[str, Field(min_length=4, max_length=8)]
+RawPasswordStr = Annotated[str, Field(..., min_length=6, max_length=32)]
+UserNameStr = Annotated[str, Field(min_length=4, max_length=20)]
 UserRoleLiteral = Literal["USER", "ADMIN"]
 UserSegmentLiteral = Literal["B", "C"]
 UserStatusLiteral = Literal["ACTIVE", "BANNED"]
@@ -17,6 +17,7 @@ class RegisterIn(BaseModel):
     username: UserNameStr
     confirm_password: RawPasswordStr
     code: Annotated[str, Field(..., min_length=4, max_length=4)]
+    invite_code: str | None = Field(default=None, max_length=32)
 
     @model_validator(mode="after")
     def password_is_match(self):
@@ -46,6 +47,8 @@ class UserSchema(BaseModel):
     user_segment: UserSegmentLiteral = "C"
     status: UserStatusLiteral = "ACTIVE"
     blacklisted: bool = False
+    invite_code: str | None = ""
+    credits: int = 0
 
 
 class LoginOut(BaseModel):
